@@ -5,8 +5,8 @@ resources:
   - ../../../base
 labels:
   - pairs:
-      app.kubernetes.io/name: fint-kontroll-device-factory
-      app.kubernetes.io/instance: fint-kontroll-device-factory_fintlabs_no
+      app.kubernetes.io/name: fint-kontroll-ms-graph-gateway
+      app.kubernetes.io/instance: fint-kontroll-ms-graph-gateway_fintlabs_no
       app.kubernetes.io/version: latest
       app.kubernetes.io/component: backend
       app.kubernetes.io/part-of: fint-kontroll
@@ -34,7 +34,7 @@ patches:
 
     target:
       kind: Application
-      name: fint-kontroll-device-factory
+      name: fint-kontroll-ms-graph-gateway
 
 
 

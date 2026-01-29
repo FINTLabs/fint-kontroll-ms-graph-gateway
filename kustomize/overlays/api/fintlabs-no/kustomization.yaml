@@ -5,8 +5,8 @@ resources:
   - ../../../base
 labels:
   - pairs:
-      app.kubernetes.io/name: fint-kontroll-device-factory
-      app.kubernetes.io/instance: fint-kontroll-device-factory_fintlabs_no
+      app.kubernetes.io/name: fint-kontroll-ms-graph-gateway
+      app.kubernetes.io/instance: fint-kontroll-ms-graph-gateway_fintlabs_no
       app.kubernetes.io/version: latest
       app.kubernetes.io/component: backend
       app.kubernetes.io/part-of: fint-kontroll
@@ -33,7 +33,7 @@ patches:
         value: "43200000"
       - op: replace
         path: "/spec/env/1/value"
-        value: "fintlabs-no-fint-kontroll-device-factory"
+        value: "fintlabs-no-fint-kontroll-ms-graph-gateway"
       - op: replace
         path: "/spec/env/6/value"
         value: "3,4"
@@ -50,7 +50,7 @@ patches:
           value: "fintlabs-no"
     target:
       kind: Application
-      name: fint-kontroll-device-factory
+      name: fint-kontroll-ms-graph-gateway
 
 
 

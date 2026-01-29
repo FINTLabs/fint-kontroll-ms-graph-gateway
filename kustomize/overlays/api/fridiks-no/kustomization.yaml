@@ -5,8 +5,8 @@ resources:
   - ../../../base
 labels:
   - pairs:
-      app.kubernetes.io/name: fint-kontroll-device-factory
-      app.kubernetes.io/instance: fint-kontroll-device-factory_fridiks_no
+      app.kubernetes.io/name: fint-kontroll-ms-graph-gateway
+      app.kubernetes.io/instance: fint-kontroll-ms-graph-gateway_fridiks_no
       app.kubernetes.io/version: latest
       app.kubernetes.io/component: backend
       app.kubernetes.io/part-of: fint-kontroll
@@ -27,7 +27,7 @@ patches:
             memory: "1500Mi"
       - op: replace
         path: "/spec/env/1/value"
-        value: "fridiks-no-fint-kontroll-device-factory"
+        value: "fridiks-no-fint-kontroll-ms-graph-gateway"
       - op: replace
         path: "/spec/kafka/acls/0/topic"
         value: "fridiks-no.kontroll.*"
@@ -41,5 +41,5 @@ patches:
           value: "fridiks-no"
     target:
       kind: Application
-      name: fint-kontroll-device-factory
+      name: fint-kontroll-ms-graph-gateway
 
