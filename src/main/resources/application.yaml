@@ -36,5 +36,16 @@ fint:
         enableexternalusers:
         externaluserattribute:
         externaluservalue:
+        userpagingsize: 100
+        stale-after-days: 21
+        accepted-deviation-percent: 5
+        min-not-seen-count: 7
+        user-scheduler:
+            delta:
+              initial-delay-ms: 1000
+              fixed-delay-ms: 450000
+            full-import:
+              cron: 0 0 12 * * *
+
 
 
