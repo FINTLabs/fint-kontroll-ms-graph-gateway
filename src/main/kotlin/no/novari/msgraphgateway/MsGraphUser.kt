@@ -208,19 +208,19 @@ class MsGraphUser(
 
         var totalUsersFetched = 0
         var totalPublished = 0
-        var pageNo = 0
+        var pageNumber = 0
 
         val seenNextLinks = HashSet<String>()
 
         while (current != null) {
-            pageNo++
+            pageNumber++
             val value = current.value
             val fetchedThisPage = value?.size ?: 0
 
             if (fetchedThisPage > 0) {
                 totalUsersFetched += fetchedThisPage
                 log.debug(
-                    "Users page {} fetched={} (fetchedTotalSoFar={})", pageNo, fetchedThisPage, totalUsersFetched
+                    "Users page {} fetched={} (fetchedTotalSoFar={})", pageNumber, fetchedThisPage, totalUsersFetched
                 )
 
                 val publishedThisPage = withContext(Dispatchers.IO) {
@@ -228,7 +228,7 @@ class MsGraphUser(
                 }
                 totalPublished += publishedThisPage
             } else {
-                log.debug("Users page {} fetched=0", pageNo)
+                log.debug("Users page {} fetched=0", pageNumber)
             }
 
             last = current
