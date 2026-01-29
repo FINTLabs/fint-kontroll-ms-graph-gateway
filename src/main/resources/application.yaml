@@ -1,0 +1,49 @@
+spring:
+  profiles:
+    include:
+      - kafka
+      - db
+server:
+  port: 8080
+
+logging:
+  pattern:
+    console: "%d{dd.MM.yyyy HH:mm:ss.SSSXXX} %highlight(%-5level) %logger{0} - %msg%n"
+  level:
+    com.azure: WARN
+    com.microsoft: WARN
+    org.apache: WARN
+    org.springframework.boot.autoconfigure.flyway: DEBUG
+    org.flywaydb: DEBUG
+
+novari:
+  application-id: fint-kontroll-ms-graph-gateway
+  org-id: fintlabs.no
+fint:
+  kontroll:
+    ms-graph-gateway:
+      user:
+        #Set variable user Attributes. Case sensitive. See User Object in Graph
+        use-same-id-num-attribute: false
+        user-id-num-attribute: employeeId
+        validator-attribute: employeeType
+        student-validator: elev
+        employee-validator: tilsett
+        employeeidattribute: onPremisesExtensionAttributes.extensionAttribute10
+        studentidattribute: onPremisesExtensionAttributes.extensionAttribute9
+        mainorgunitidattribute: extension_ce2447ecc9664e2bae2deac76cd97e7e_MainOrgUnitId
+        mainorgunitnameattribute: extension_ce2447ecc9664e2bae2deac76cd97e7e_MainOrgUnitName
+        enableexternalusers: false
+        externaluserattribute: onPremisesExtensionAttributes.extensionAttribute11
+        externaluservalue: ----
+        userpagingsize: 100
+        stale-after-days: 21
+        accepted-deviation: 5
+      user-scheduler:
+        delta:
+          initial-delay-ms: 1000
+          fixed-delay-ms: 450000
+        full-import:
+          cron: 0 0 12 * * *
+
+

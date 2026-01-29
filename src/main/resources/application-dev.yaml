@@ -1,0 +1,16 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/postgres?currentSchema=ms-graph-gateway
+    username: postgres
+    password: postgres
+    driver-class-name: org.postgresql.Driver
+
+
+#placeholders. Do not add creds
+azure:
+  timeout: 1
+  credentials:
+    clientid: XXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
+    clientsecret: XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+    tenantguid: XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
+    entobjectid: XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
