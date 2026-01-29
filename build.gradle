@@ -1,0 +1,70 @@
+plugins {
+    id 'org.springframework.boot' version '3.5.9'
+    id 'io.spring.dependency-management' version '1.1.6'
+
+    id 'org.jetbrains.kotlin.jvm' version '2.3.0'
+    id 'org.jetbrains.kotlin.plugin.spring' version '2.3.0'
+    id 'org.jetbrains.kotlin.plugin.jpa' version '2.3.0'
+}
+
+group = 'no.novari'
+version = '0.0.1-SNAPSHOT'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_25
+        freeCompilerArgs.addAll(['-Xjsr305=strict', '-Xjvm-default=all'])
+    }
+}
+
+repositories {
+    mavenLocal()
+    maven {
+        url("https://repo.fintlabs.no/releases")
+    }
+    mavenCentral()
+}
+
+dependencies {
+    // Spring Boot
+    implementation 'org.springframework.boot:spring-boot-starter'
+    implementation "org.springframework.boot:spring-boot-starter-web"
+    implementation 'org.springframework.boot:spring-boot-starter-jdbc'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    implementation 'org.springframework:spring-context-support'
+
+    // Kotlin
+    implementation 'org.jetbrains.kotlin:kotlin-reflect'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core'
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-jdk8'
+    apply plugin: 'kotlin'
+
+    // Database (Postgres)
+    implementation 'org.postgresql:postgresql'
+    implementation 'org.flywaydb:flyway-core'
+    implementation 'org.flywaydb:flyway-database-postgresql'
+
+    // Kafka
+    implementation 'org.springframework.kafka:spring-kafka'
+    implementation 'no.novari:kafka:6.0.0'
+
+
+    // Microsoft Graph SDK (Java)
+    implementation 'com.microsoft.graph:microsoft-graph:6.20.0'
+    implementation("com.azure:azure-identity:1.18.2")
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
