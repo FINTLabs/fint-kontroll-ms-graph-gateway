@@ -1,0 +1,46 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: afk-no
+resources:
+  - ../../../base
+
+labels:
+  - pairs:
+      app.kubernetes.io/name: fint-kontroll-ms-graph-gateway
+      app.kubernetes.io/instance: fint-kontroll-ms-graph-gateway_afk_no
+      app.kubernetes.io/version: latest
+      app.kubernetes.io/component: backend
+      app.kubernetes.io/part-of: fint-kontroll
+      fintlabs.no/team: bas
+      fintlabs.no/org-id: afk.no
+patches:
+  - patch: |-
+      - op: replace
+        path: "/spec/orgId"
+        value: "afk.no"
+      - op: add
+        path: "/spec/resources"
+        value: 
+          limits:
+            memory: "8192Mi"
+          requests:
+            cpu: "500m"
+            memory: "4000Mi"      
+      - op: replace
+        path: "/spec/env/1/value"
+        value: "afk-no-fint-kontroll-ms-graph-gateway"
+      - op: replace
+        path: "/spec/kafka/acls/0/topic"
+        value: "afk-no.kontroll.*"
+      - op: replace
+        path: "/spec/kafka/acls/1/topic"
+        value: "afk-no.kontroll.*"
+      - op: add
+        path: "/spec/env/-"
+        value:
+          name: "novari.kafka.topic.orgId"
+          value: "afk-no"
+    target:
+      kind: Application
+      name: fint-kontroll-ms-graph-gateway
+
