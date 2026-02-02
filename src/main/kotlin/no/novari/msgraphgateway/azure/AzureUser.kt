@@ -63,7 +63,7 @@ data class AzureUser(
                     return null
                 }
             } else {
-                user.backingStore.get(attributeName) as String
+                user.backingStore.get(attributeName) as? String
             }
         }
     }
