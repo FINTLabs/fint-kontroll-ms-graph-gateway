@@ -11,7 +11,8 @@ spec:
   envFrom:
     - secretRef:
         name: fint-kontroll-ms-graph-gateway
-
+  database:
+    database: fint-kontroll
   kafka:
     enabled: true
     acls:
