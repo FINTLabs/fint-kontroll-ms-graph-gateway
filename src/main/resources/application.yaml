@@ -24,7 +24,7 @@ fint:
     ms-graph-gateway:
       user:
         #Set variable user Attributes. Case sensitive. See User Object in Graph
-        use-same-id-num-attribute:
+        use-same-id-num-attribute: false
         user-id-num-attribute:
         validator-attribute:
         student-validator:
@@ -42,7 +42,6 @@ fint:
         min-not-seen-count: 7
         user-scheduler:
             delta:
-              initial-delay-ms: 1000
               fixed-delay-ms: 450000
             full-import:
               cron: 0 0 12 * * *
