@@ -7,20 +7,10 @@ spec:
   orgId: fintlabs.no
   image: ghcr.io/fintlabs/fint-kontroll-ms-graph-gateway:latest
   imagePullPolicy: Always
-  env:
-    - name: fint.client.base-url
-      value: 'https://api.felleskomponent.no'
-    - name: spring.kafka.consumer.group-id
-      value: 'fint-kontroll-ms-graph-gateway'
-    - name: fint.kontroll.publishing.initial-delay
-      value: "300000"
-    - name: fint.kontroll.publishing.fixed-delay
-      value: "900000"
-    - name: fint.kontroll.publishing.membership-initial-delay
-      value: "500000"
-    - name: JAVA_TOOL_OPTIONS
-      value: "-XX:+ExitOnOutOfMemoryError -Xmx4800m"
-
+  env: []
+  envFrom:
+    - secretRef:
+        name: fint-kontroll-ms-graph-gateway
 
   kafka:
     enabled: true

@@ -1,47 +1,47 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-namespace: afk-no
+namespace: vlfk-no
 resources:
   - ../../../base
 commonLabels:
   app.kubernetes.io/name: fint-kontroll-ms-graph-gateway
-  app.kubernetes.io/instance: fint-kontroll-ms-graph-gateway_afk-no
+  app.kubernetes.io/instance: fint-kontroll-ms-graph-gateway_vlfk-no
   app.kubernetes.io/version: latest
   app.kubernetes.io/component: backend
   app.kubernetes.io/part-of: fint-kontroll
   fintlabs.no/team: bas
-  fintlabs.no/org-id: afk.no
+  fintlabs.no/org-id: vlfk.no
 patches:
   - patch: |-
       - op: replace
         path: "/spec/orgId"
-        value: "afk.no"
+        value: "vlfk.no"
       - op: replace
         path: "/spec/kafka/acls/0/topic"
-        value: "afk-no.kontroll.*"
+        value: "vlfk-no.kontroll.*"
       - op: replace
         path: "/spec/kafka/acls/1/topic"
-        value: "afk-no.kontroll.*"
+        value: "vlfk-no.kontroll.*"
       - op: add
         path: "/spec/resources"
-        value:
+        value: 
           limits:
-            memory: "25Gi"
+            memory: "10Gi"
           requests:
             cpu: "500m"
-            memory: "6Gi"
+            memory: "4Gi"
       - op: add
         path: "/spec/env/0"
         value:
           name: "JAVA_TOOL_OPTIONS"
-          value: "-XX:+ExitOnOutOfMemoryError -Xmx24832m"
+          value: "-XX:+ExitOnOutOfMemoryError -Xmx9984m"
     target:
       kind: Application
       name: fint-kontroll-ms-graph-gateway
   - patch: |-
       - op: replace
         path: "/spec/itemPath"
-        value: "vaults/aks-api-vault/items/kontroll-afk-ms-graph-gateway"
+        value: "vaults/aks-api-vault/items/kontroll-vlfk-ms-graph-gateway"
     target:
       kind: OnePasswordItem
       name: fint-kontroll-ms-graph-gateway

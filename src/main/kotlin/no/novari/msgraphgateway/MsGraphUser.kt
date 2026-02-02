@@ -50,7 +50,7 @@ class MsGraphUser(
     }
 
     @Scheduled(
-        initialDelayString = "\${fint.kontroll.ms-graph-gateway.user-scheduler.delta.initial-delay-ms}",
+        initialDelayString = "90000",
         fixedDelayString = "\${fint.kontroll.ms-graph-gateway.user-scheduler.delta.fixed-delay-ms}"
     )
     fun pullAllUsersDelta() {
