@@ -79,7 +79,7 @@ class EntraUserSyncService(
         val now = Instant.now()
 
         val removedUsers = batch.filter { it.additionalData.containsKey("@removed") }
-        removedUsers.size
+        log.info("There are ${removedUsers.size} removed users")
 
         for (u in removedUsers) {
             handleRemoved(u.id)
@@ -132,7 +132,7 @@ class EntraUserSyncService(
                 coreUserRepository.batchUpsertReturningChanged(rows)
             }
         }
-
+        log.info("There are ${changedIds.size} changed users")
         val publishJobs = changedIds.mapNotNull { id ->
             val dto = dtoById[id] ?: return@mapNotNull null
             if (isExternal(dto)) {
@@ -141,15 +141,17 @@ class EntraUserSyncService(
             }
 
             async(Dispatchers.IO) {
-                kafkaPermits.withPermit {
-                    producer.publish(dto)
-                }
-                true
+                runCatching {
+                    kafkaPermits.withPermit {
+                        producer.publish(dto)
+                    }
+                }.onFailure { log.warn("Failed publishing user {}", dto.id, it) }
+
             }
         }
 
 
-        val publishedCount = publishJobs.awaitAll().count { it }
+        val publishedCount = publishJobs.awaitAll().count { it.isSuccess }
         return@coroutineScope publishedCount
     }
 
