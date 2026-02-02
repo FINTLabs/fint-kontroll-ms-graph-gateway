@@ -17,11 +17,10 @@ import kotlin.emptyArray
 @ConfigurationProperties(prefix = "azure")
 open class Config {
 
-    var timeout: Int = 0
+    var timeout: Long = 0L
 
     var credentials: Credentials = Credentials()
 
-    @ConfigurationProperties(prefix = "azure.credentials")
     class Credentials {
         var clientid: String? = null
         var clientsecret: String? = null
@@ -51,10 +50,10 @@ open class Config {
         val okHttpClient = OkHttpClient.Builder()
             .dispatcher(dispatcher)
             .connectionPool(pool)
-            .callTimeout(timeout.toLong(), TimeUnit.MINUTES)
-            .connectTimeout(timeout.toLong(), TimeUnit.MINUTES)
-            .readTimeout(timeout.toLong(), TimeUnit.MINUTES)
-            .writeTimeout(timeout.toLong(), TimeUnit.MINUTES)
+            .callTimeout(timeout, TimeUnit.MINUTES)
+            .connectTimeout(timeout, TimeUnit.MINUTES)
+            .readTimeout(timeout, TimeUnit.MINUTES)
+            .writeTimeout(timeout, TimeUnit.MINUTES)
             .retryOnConnectionFailure(true)
             .build()
 

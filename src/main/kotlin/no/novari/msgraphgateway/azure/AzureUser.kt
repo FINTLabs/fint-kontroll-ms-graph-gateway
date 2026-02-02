@@ -53,17 +53,17 @@ data class AzureUser(
                 val attributeValues: OnPremisesExtensionAttributes? =
                     user.onPremisesExtensionAttributes
                 try {
-                    attributeValues?.backingStore?.get(attributeParts[1])
+                    attributeValues?.backingStore?.get(attributeParts[1]) as String
                 } catch (e: NullPointerException) {
                     log.debug(
                         "getAttributeValue expected {}, but this is not found: {}",
                         attributeName,
                         e.message
                     )
-                    null
+                    return null
                 }
             } else {
-                user.backingStore.get(attributeName) as? String
+                user.backingStore.get(attributeName) as String
             }
         }
     }
