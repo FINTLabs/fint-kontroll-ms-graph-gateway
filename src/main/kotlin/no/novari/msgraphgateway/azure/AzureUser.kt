@@ -9,8 +9,8 @@ data class AzureUser(
     val mail: String? = null,
     val id: String? = null,
     val userPrincipalName: String? = null,
-    val employeeId: String? = null,
-    val studentId: String? = null,
+    var employeeId: String? = null,
+    var studentId: String? = null,
     val idpUserObjectId: String? = null,
     val accountEnabled: Boolean? = null,
     val validatorAttribute: String? = null
@@ -24,34 +24,23 @@ data class AzureUser(
         accountEnabled = user.accountEnabled
     ) {
         if (!configUser.useSameIdNumAttribute) {
-            setEmployeeAndStudentIds(
-                employeeId = getAttributeValue(user, configUser.employeeidattribute),
-                studentId = getAttributeValue(user, configUser.studentidattribute)
-            )
+            employeeId = getAttributeValue(user, configUser.employeeidattribute)
+            studentId = getAttributeValue(user, configUser.studentidattribute)
+
             return
         }
 
         val valAttrValue = getAttributeValue(user, configUser.validatorAttribute) ?: return
         val userIdNumValue = getAttributeValue(user, configUser.userIdNumAttribute)
 
-        when {
-            valAttrValue.contains(requireNotNull(configUser.employeeValidator)) ->
-                setEmployeeAndStudentIds(employeeId = userIdNumValue, studentId = null)
-
-            valAttrValue.contains(requireNotNull(configUser.studentValidator)) ->
-                setEmployeeAndStudentIds(employeeId = null, studentId = userIdNumValue)
+        if (configUser.employeeValidator?.let(valAttrValue::contains) == true) {
+            employeeId = userIdNumValue
+        } else if (configUser.studentValidator?.let(valAttrValue::contains) == true) {
+            studentId = userIdNumValue
         }
+
     }
 
-    private fun setEmployeeAndStudentIds(employeeId: String?, studentId: String?) {
-        val fieldEmployeeId = AzureUser::class.java.getDeclaredField("employeeId")
-        fieldEmployeeId.isAccessible = true
-        fieldEmployeeId.set(this, employeeId)
-
-        val fieldStudentId = AzureUser::class.java.getDeclaredField("studentId")
-        fieldStudentId.isAccessible = true
-        fieldStudentId.set(this, studentId)
-    }
 
     companion object {
         private val log = LoggerFactory.getLogger(AzureUser::class.java)

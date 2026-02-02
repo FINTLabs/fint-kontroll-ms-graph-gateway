@@ -43,23 +43,22 @@ class ConfigUser() {
     var minNotSeenCount: Int = 7
 
     fun allAttributes(): List<String> {
-        val allAttribs = mutableListOf<String>()
+        val allAttributes = mutableListOf<String>()
 
-        val same = useSameIdNumAttribute == true
-        if (!same) {
-            studentidattribute?.let { allAttribs.add(it) }
-            employeeidattribute?.let { allAttribs.add(it) }
+        if (!useSameIdNumAttribute) {
+            studentidattribute?.let { allAttributes.add(it) }
+            employeeidattribute?.let { allAttributes.add(it) }
         } else {
-            userIdNumAttribute?.let { allAttribs.add(it) }
-            validatorAttribute?.let { allAttribs.add(it) }
+            userIdNumAttribute?.let { allAttributes.add(it) }
+            validatorAttribute?.let { allAttributes.add(it) }
         }
 
-        if (!mainorgunitidattribute.isNullOrEmpty()) allAttribs.add(mainorgunitidattribute!!)
-        if (!mainorgunitnameattribute.isNullOrEmpty()) allAttribs.add(mainorgunitnameattribute!!)
-        if (!externaluserattribute.isNullOrEmpty()) allAttribs.add(externaluserattribute!!)
+        if (!mainorgunitidattribute.isNullOrEmpty()) allAttributes.add(mainorgunitidattribute!!)
+        if (!mainorgunitnameattribute.isNullOrEmpty()) allAttributes.add(mainorgunitnameattribute!!)
+        if (!externaluserattribute.isNullOrEmpty()) allAttributes.add(externaluserattribute!!)
 
-        allAttribs.addAll(userAttributes)
-        return allAttribs
+        allAttributes.addAll(userAttributes)
+        return allAttributes
     }
 
     fun userAttributesDelta(): Array<String> {
@@ -68,8 +67,8 @@ class ConfigUser() {
         val raw = allAttributes()
         val cleaned = mutableListOf<String>()
 
-        for (s0 in raw) {
-            val s = s0.trim()
+        for (attribute in raw) {
+            val s = attribute.trim()
             if (s.isEmpty()) continue
 
             if (s.startsWith("onPremisesExtensionAttributes.")) {
