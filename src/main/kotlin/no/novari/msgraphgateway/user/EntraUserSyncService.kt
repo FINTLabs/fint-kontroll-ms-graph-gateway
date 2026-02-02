@@ -126,7 +126,7 @@ class EntraUserSyncService(
             )
             dtoById[c.id] = c.dto
         }
-
+        log.info("There are ${dtoById.size} dtos to upsert")
         val changedIds: Set<UUID> = dbBatchPermits.withPermit {
             withContext(Dispatchers.IO) {
                 coreUserRepository.batchUpsertReturningChanged(rows)
@@ -135,7 +135,7 @@ class EntraUserSyncService(
         log.info("There are ${changedIds.size} changed users")
         val publishJobs = changedIds.mapNotNull { id ->
             val dto = dtoById[id] ?: return@mapNotNull null
-            log.debug("Processing user with id: ${dto.id}")
+            log.info("Processing user with id: ${dto.id}")
             if (isExternal(dto)) {
                 return@mapNotNull null
                 // publish as external user if it has the property
@@ -152,7 +152,7 @@ class EntraUserSyncService(
             }
         }
 
-
+        log.info("Waiting for ${publishJobs.size} publish jobs to complete")
         val publishedCount = publishJobs.awaitAll().count { it.isSuccess }
         return@coroutineScope publishedCount
     }
