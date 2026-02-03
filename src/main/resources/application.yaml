@@ -44,7 +44,7 @@ fint:
         user-scheduler:
             delta:
               fixed-delay-ms: 450000
-
+              initial-delay-ms: 1000
             full-import:
               cron: 0 0 12 * * *
 

@@ -4,8 +4,8 @@ services:
     container_name: my-postgres-db
     environment:
       POSTGRES_DB: postgres
-      POSTGRES_USER: <user>
-      POSTGRES_PASSWORD: <password>
+      POSTGRES_USER: msgraphuser
+      POSTGRES_PASSWORD: password
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:

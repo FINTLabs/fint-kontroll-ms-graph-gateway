@@ -25,7 +25,7 @@ class MsGraphUser(
     private val graphServiceClient: GraphServiceClient,
     private val entraUserSyncService: EntraUserSyncService,
     private val deltaLinkStore: DeltaLinkStore,
-    private val coreUserRepository: CoreUserRepository
+    private val coreUserRepository: CoreUserRepository,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val runMutex = Mutex()
@@ -72,7 +72,8 @@ class MsGraphUser(
 
                 log.info(
                     "Starting users delta pull from Microsoft Graph (deltaLinkPresent={}, pageSize={})",
-                    deltaPresent, configUser.userpagingsize
+                    deltaPresent,
+                    configUser.userpagingsize,
                 )
 
                 val firstPage =
@@ -152,7 +153,7 @@ class MsGraphUser(
 
         log.info(
             "Starting full import of users from Microsoft Graph (pageSize={})",
-            configUser.userpagingsize
+            configUser.userpagingsize,
         )
 
         val firstPage =
@@ -202,9 +203,10 @@ class MsGraphUser(
                     requestConfiguration.queryParameters?.filter = "userType eq 'Member'"
                 } ?: 0
         val totalCountDb = coreUserRepository.getCount()
-        if (totalCountDb != 0 && Math.abs(totalCountSource - totalCountDb).div(totalCountDb) < Math.divideExact(
+        if (totalCountDb != 0 && Math.abs(totalCountSource - totalCountDb).div(totalCountDb) <
+            Math.divideExact(
                 configUser.acceptedDeviationPercent ?: 0,
-                100
+                100,
             )
         ) {
             log.info("Not starting import, as the coverage is too low")
@@ -216,7 +218,7 @@ class MsGraphUser(
 
     private suspend fun pageThroughUsers(
         firstPage: DeltaGetResponse?,
-        isFullImport: Boolean
+        isFullImport: Boolean,
     ): PageResult {
         var current: DeltaGetResponse? = firstPage
         var last: DeltaGetResponse? = firstPage
@@ -298,8 +300,8 @@ class MsGraphUser(
         return PageResult(totalUsersFetched, totalPublished)
     }
 
-    private suspend fun <T> callGraph(block: () -> T): T {
-        return try {
+    private suspend fun <T> callGraph(block: () -> T): T =
+        try {
             withContext(Dispatchers.IO) { block() }
         } catch (ae: ApiException) {
             log.error("Graph call failed: {}", ae.message)
