@@ -54,8 +54,6 @@ class MsGraphUser(
         fixedDelayString = "\${fint.kontroll.ms-graph-gateway.user-scheduler.delta.fixed-delay-ms}"
     )
     fun pullAllUsersDelta() {
-        log.info("Config user")
-        log.info(configUser.allAttributes().joinToString(", "))
         if (fullImportRequested.get()) {
             log.info("Full import pending; skipping delta run")
             return

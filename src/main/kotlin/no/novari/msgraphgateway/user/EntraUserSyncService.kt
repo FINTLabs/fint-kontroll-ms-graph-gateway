@@ -126,7 +126,6 @@ class EntraUserSyncService(
             )
             dtoById[c.id] = c.dto
         }
-        log.info("There are ${dtoById.size} dtos to upsert")
         val changedIds: Set<UUID> = dbBatchPermits.withPermit {
             withContext(Dispatchers.IO) {
                 coreUserRepository.batchUpsertReturningChanged(rows)
@@ -135,8 +134,6 @@ class EntraUserSyncService(
         log.info("There are ${changedIds.size} changed users")
         val publishJobs = changedIds.mapNotNull { id ->
             val dto = dtoById[id] ?: return@mapNotNull null
-            log.info("Processing user with id: ${dto.id}")
-            println(dto.toString())
             if (isExternal(dto)) {
                 return@mapNotNull null
                 // publish as external user if it has the property
@@ -145,7 +142,6 @@ class EntraUserSyncService(
             async(Dispatchers.IO) {
                 runCatching {
                     kafkaPermits.withPermit {
-                        log.info("Publishing user {}", dto.id)
                         producer.publish(dto)
                     }
                 }.onFailure { log.warn("Failed publishing user {}", dto.id, it) }
