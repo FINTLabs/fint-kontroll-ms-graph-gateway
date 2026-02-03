@@ -20,6 +20,12 @@ logging:
 novari:
   application-id: fint-kontroll-ms-graph-gateway
   org-id: fintlabs.no
+  kafka:
+    topic:
+      org-id: fintlabs-no
+      domain-context: kontroll
+    application-id: fintlabs.no
+    default-replicas: 1
 fint:
   kontroll:
     ms-graph-gateway:
