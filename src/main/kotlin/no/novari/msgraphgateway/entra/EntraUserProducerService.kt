@@ -8,62 +8,66 @@ import no.novari.kafka.topic.configuration.EntityCleanupFrequency
 import no.novari.kafka.topic.configuration.EntityTopicConfiguration
 import no.novari.kafka.topic.name.EntityTopicNameParameters
 import no.novari.kafka.topic.name.TopicNamePrefixParameters
-import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.time.Duration
 
 @Service
-class AzureUserProducerService(
+class EntraUserProducerService(
     private val parameterizedTemplateFactory: ParameterizedTemplateFactory,
-    entityTopicService: EntityTopicService
+    entityTopicService: EntityTopicService,
 ) {
-
-    private val azureUserTemplate: ParameterizedTemplate<AzureUser> by lazy {
-        parameterizedTemplateFactory.createTemplate(AzureUser::class.java)
-
+    private val entraUserTemplate: ParameterizedTemplate<EntraUser> by lazy {
+        parameterizedTemplateFactory.createTemplate(EntraUser::class.java)
     }
 
     private val entityTopicNameParameters: EntityTopicNameParameters
 
     init {
-        val topicNamePrefixParameters = TopicNamePrefixParameters.stepBuilder()
-            .orgIdCommon()
-            .domainContextCommon()
-            .build()
+        val topicNamePrefixParameters =
+            TopicNamePrefixParameters
+                .stepBuilder()
+                .orgIdCommon()
+                .domainContextCommon()
+                .build()
 
-        entityTopicNameParameters = EntityTopicNameParameters.builder()
-            .topicNamePrefixParameters(topicNamePrefixParameters)
-            .resourceName("azure-user")
-            .build()
+        entityTopicNameParameters =
+            EntityTopicNameParameters
+                .builder()
+                .topicNamePrefixParameters(topicNamePrefixParameters)
+                .resourceName("azure-user")
+                .build()
 
         entityTopicService.createOrModifyTopic(
             entityTopicNameParameters,
-            EntityTopicConfiguration.stepBuilder()
+            EntityTopicConfiguration
+                .stepBuilder()
                 .partitions(1)
                 .lastValueRetainedForever()
                 .nullValueRetentionTime(Duration.ofDays(7))
                 .cleanupFrequency(EntityCleanupFrequency.NORMAL)
-                .build()
+                .build(),
         )
     }
 
-    fun publish(azureUser: AzureUser) {
-        azureUserTemplate.send(
-            ParameterizedProducerRecord.builder<AzureUser>()
+    fun publish(entraUser: EntraUser) {
+        entraUserTemplate.send(
+            ParameterizedProducerRecord
+                .builder<EntraUser>()
                 .topicNameParameters(entityTopicNameParameters)
-                .key(azureUser.idpUserObjectId)
-                .value(azureUser)
-                .build()
+                .key(entraUser.idpUserObjectId)
+                .value(entraUser)
+                .build(),
         )
     }
 
     fun publishDeletedUser(userId: String) {
-        azureUserTemplate.send(
-            ParameterizedProducerRecord.builder<AzureUser>()
+        entraUserTemplate.send(
+            ParameterizedProducerRecord
+                .builder<EntraUser>()
                 .topicNameParameters(entityTopicNameParameters)
                 .key(userId)
                 .value(null)
-                .build()
+                .build(),
         )
     }
 }

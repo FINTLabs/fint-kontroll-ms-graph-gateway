@@ -6,23 +6,23 @@ import java.util.LinkedHashSet
 
 @Component
 @ConfigurationProperties(prefix = "fint.kontroll.ms-graph-gateway.user")
-class ConfigUser() {
-
+class ConfigUser {
     companion object {
         @JvmStatic
-        val userAttributes: List<String> = listOf(
-            "id",
-            "accountEnabled",
-            "mail",
-            "mobilePhone",
-            "onPremisesExtensionAttributes",
-            "userPrincipalName",
-            "displayName",
-            "givenName",
-            "surname",
-            "onPremisesUserPrincipalName",
-            "onPremisesSamAccountName"
-        )
+        val userAttributes: List<String> =
+            listOf(
+                "id",
+                "accountEnabled",
+                "mail",
+                "mobilePhone",
+                "onPremisesExtensionAttributes",
+                "userPrincipalName",
+                "displayName",
+                "givenName",
+                "surname",
+                "onPremisesUserPrincipalName",
+                "onPremisesSamAccountName",
+            )
     }
 
     var mainorgunitidattribute: String? = null

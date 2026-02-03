@@ -1,0 +1,16 @@
+services:
+  postgresql:
+    image: postgres:14.20
+    container_name: my-postgres-db
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: <user>
+      POSTGRES_PASSWORD: <password>
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

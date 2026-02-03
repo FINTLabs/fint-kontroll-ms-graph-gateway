@@ -25,7 +25,7 @@ class MsGraphUser(
     private val graphServiceClient: GraphServiceClient,
     private val entraUserSyncService: EntraUserSyncService,
     private val deltaLinkStore: DeltaLinkStore,
-    private val coreUserRepository: CoreUserRepository
+    private val coreUserRepository: CoreUserRepository,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val runMutex = Mutex()
@@ -50,8 +50,8 @@ class MsGraphUser(
     }
 
     @Scheduled(
-        initialDelayString = "\${fint.kontroll.ms-graph-gateway.user-scheduler.delta.initial-delay-ms}",
-        fixedDelayString = "\${fint.kontroll.ms-graph-gateway.user-scheduler.delta.fixed-delay-ms}"
+        initialDelayString = "\${fint.kontroll.ms-graph-gateway.user.user-scheduler.delta.initial-delay-ms}",
+        fixedDelayString = "\${fint.kontroll.ms-graph-gateway.user.user-scheduler.delta.fixed-delay-ms}",
     )
     fun pullAllUsersDelta() {
         if (fullImportRequested.get()) {
@@ -72,24 +72,31 @@ class MsGraphUser(
 
                 log.info(
                     "Starting users delta pull from Microsoft Graph (deltaLinkPresent={}, pageSize={})",
-                    deltaPresent, configUser.userpagingsize
+                    deltaPresent,
+                    configUser.userpagingsize,
                 )
 
-                val firstPage = callGraph {
-                    val link = userDeltaLink
-                    if (!link.isNullOrBlank()) {
-                        graphServiceClient.users().delta().withUrl(link).get()
-                    } else {
-                        graphServiceClient.users()
-                            .delta()
-                            .get { req ->
-                                req.queryParameters?.apply {
-                                    select = selection
-                                    top = configUser.userpagingsize
+                val firstPage =
+                    callGraph {
+                        val link = userDeltaLink
+                        if (!link.isNullOrBlank()) {
+                            graphServiceClient
+                                .users()
+                                .delta()
+                                .withUrl(link)
+                                .get()
+                        } else {
+                            graphServiceClient
+                                .users()
+                                .delta()
+                                .get { req ->
+                                    req.queryParameters?.apply {
+                                        select = selection
+                                        top = configUser.userpagingsize
+                                    }
                                 }
-                            }
+                        }
                     }
-                }
 
                 pageThroughUsers(firstPage, isFullImport = false)
             } catch (e: RuntimeException) {
@@ -139,58 +146,67 @@ class MsGraphUser(
 
     private suspend fun startFullImport() {
         val runStartTime = Instant.now()
-        if (!shouldContinueWithImport())
+        if (!shouldContinueWithImport()) {
             return
+        }
         val selection = configUser.userAttributesDelta()
 
         log.info(
             "Starting full import of users from Microsoft Graph (pageSize={})",
-            configUser.userpagingsize
+            configUser.userpagingsize,
         )
 
-        val firstPage = callGraph {
-            graphServiceClient.users()
-                .delta()
-                .get { req ->
-                    req.queryParameters?.select = selection
-                    req.queryParameters?.top = configUser.userpagingsize
-                }
-        }
+        val firstPage =
+            callGraph {
+                graphServiceClient
+                    .users()
+                    .delta()
+                    .get { req ->
+                        req.queryParameters?.select = selection
+                        req.queryParameters?.top = configUser.userpagingsize
+                    }
+            }
 
         val result = pageThroughUsers(firstPage, isFullImport = true)
         markNotSeenUsers(runStartTime)
         val cutoff = Instant.now().minus(configUser.staleAfterDays.toLong(), ChronoUnit.DAYS)
-        val deleted = withContext(Dispatchers.IO) {
-            entraUserSyncService.finishFullImport(cutoff)
-        }
+        val deleted =
+            withContext(Dispatchers.IO) {
+                entraUserSyncService.finishFullImport(cutoff)
+            }
 
         log.info(
             "Full import completed (fetchedTotal={}, publishedChanged={}, publishedDeleted={})",
-            result.totalUsersSeen, result.publishedUsers, deleted
+            result.totalUsersSeen,
+            result.publishedUsers,
+            deleted,
         )
     }
 
     private suspend fun markNotSeenUsers(startTime: Instant) {
-        val staleIds = withContext(Dispatchers.IO) {
-            coreUserRepository.findStaleObjectIds(startTime)
-        }
+        val staleIds =
+            withContext(Dispatchers.IO) {
+                coreUserRepository.findStaleObjectIds(startTime)
+            }
         log.info("Marking {} stale users as not seen", staleIds.size)
 
         coreUserRepository.incrementNotSeenCount(staleIds)
     }
 
     private fun shouldContinueWithImport(): Boolean {
-        val totalCountSource = graphServiceClient
-            .users()
-            .count()
-            .get { requestConfiguration ->
-                requestConfiguration.headers.add("ConsistencyLevel", "eventual")
-                requestConfiguration.queryParameters?.filter = "userType eq 'Member'"
-            } ?: 0
+        val totalCountSource =
+            graphServiceClient
+                .users()
+                .count()
+                .get { requestConfiguration ->
+                    requestConfiguration.headers.add("ConsistencyLevel", "eventual")
+                    requestConfiguration.queryParameters?.filter = "userType eq 'Member'"
+                } ?: 0
         val totalCountDb = coreUserRepository.getCount()
-        if (totalCountDb != 0 && Math.abs(totalCountSource - totalCountDb).div(totalCountDb) < Math.divideExact(
+        if (totalCountDb != 0 && Math.abs(totalCountSource - totalCountDb).div(totalCountDb) <
+            Math.divideExact(
                 configUser.acceptedDeviationPercent ?: 0,
-                100
+                100,
             )
         ) {
             log.info("Not starting import, as the coverage is too low")
@@ -200,10 +216,9 @@ class MsGraphUser(
         return true
     }
 
-
     private suspend fun pageThroughUsers(
         firstPage: DeltaGetResponse?,
-        isFullImport: Boolean
+        isFullImport: Boolean,
     ): PageResult {
         var current: DeltaGetResponse? = firstPage
         var last: DeltaGetResponse? = firstPage
@@ -222,12 +237,16 @@ class MsGraphUser(
             if (fetchedThisPage > 0) {
                 totalUsersFetched += fetchedThisPage
                 log.debug(
-                    "Users page {} fetched={} (fetchedTotalSoFar={})", pageNo, fetchedThisPage, totalUsersFetched
+                    "Users page {} fetched={} (fetchedTotalSoFar={})",
+                    pageNo,
+                    fetchedThisPage,
+                    totalUsersFetched,
                 )
 
-                val publishedThisPage = withContext(Dispatchers.IO) {
-                    entraUserSyncService.processPage(value)
-                }
+                val publishedThisPage =
+                    withContext(Dispatchers.IO) {
+                        entraUserSyncService.processPage(value)
+                    }
                 totalPublished += publishedThisPage
             } else {
                 log.debug("Users page {} fetched=0", pageNo)
@@ -243,12 +262,14 @@ class MsGraphUser(
                     log.error("Detected nextLink cycle; stopping paging (nextLink={})", next)
                     current = null
                 } else {
-                    current = callGraph {
-                        graphServiceClient.users()
-                            .delta()
-                            .withUrl(next)
-                            .get { req -> req.headers.add("Prefer", "return=minimal") }
-                    }
+                    current =
+                        callGraph {
+                            graphServiceClient
+                                .users()
+                                .delta()
+                                .withUrl(next)
+                                .get { req -> req.headers.add("Prefer", "return=minimal") }
+                        }
                 }
             }
         }
@@ -267,7 +288,9 @@ class MsGraphUser(
             if (!isFullImport) {
                 log.info(
                     "Delta users pull complete (initialRun={}, fetchedTotal={}, publishedChanged={})",
-                    initialRun, totalUsersFetched, totalPublished
+                    initialRun,
+                    totalUsersFetched,
+                    totalPublished,
                 )
             } else {
                 log.info("Stored new deltaLink after full import")
@@ -277,8 +300,8 @@ class MsGraphUser(
         return PageResult(totalUsersFetched, totalPublished)
     }
 
-    private suspend fun <T> callGraph(block: () -> T): T {
-        return try {
+    private suspend fun <T> callGraph(block: () -> T): T =
+        try {
             withContext(Dispatchers.IO) { block() }
         } catch (ae: ApiException) {
             log.error("Graph call failed: {}", ae.message)
@@ -286,16 +309,21 @@ class MsGraphUser(
         } catch (e: Exception) {
             throw if (e is RuntimeException) e else CompletionException(e)
         }
-    }
 
-    private fun logElapsed(startTimeMs: Long, operation: String) {
+    private fun logElapsed(
+        startTimeMs: Long,
+        operation: String,
+    ) {
         val elapsed = System.currentTimeMillis() - startTimeMs
         val minutes = (elapsed / 1000) / 60
         val seconds = (elapsed / 1000) % 60
         log.info("Finished {} in {}m {}s", operation, minutes, seconds)
     }
 
-    private data class PageResult(val totalUsersSeen: Int, val publishedUsers: Int)
+    private data class PageResult(
+        val totalUsersSeen: Int,
+        val publishedUsers: Int,
+    )
 
     companion object {
         private val log = LoggerFactory.getLogger(MsGraphUser::class.java)

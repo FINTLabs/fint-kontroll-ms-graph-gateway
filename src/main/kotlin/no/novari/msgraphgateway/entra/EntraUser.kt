@@ -5,7 +5,7 @@ import no.novari.msgraphgateway.config.ConfigUser
 import org.slf4j.LoggerFactory
 import java.io.Serializable
 
-data class AzureUser(
+data class EntraUser(
     val mail: String? = null,
     val id: String? = null,
     val userPrincipalName: String? = null,
@@ -13,20 +13,19 @@ data class AzureUser(
     val studentId: String? = null,
     val idpUserObjectId: String? = null,
     val accountEnabled: Boolean? = null,
-    val validatorAttribute: String? = null
+    val validatorAttribute: String? = null,
 ) : Serializable {
-
     constructor(user: User, configUser: ConfigUser) : this(
         mail = user.mail,
         id = user.id,
         userPrincipalName = user.userPrincipalName,
         idpUserObjectId = user.id,
-        accountEnabled = user.accountEnabled
+        accountEnabled = user.accountEnabled,
     ) {
         if (!configUser.useSameIdNumAttribute) {
             setEmployeeAndStudentIds(
                 employeeId = getAttributeValue(user, configUser.employeeidattribute),
-                studentId = getAttributeValue(user, configUser.studentidattribute)
+                studentId = getAttributeValue(user, configUser.studentidattribute),
             )
             return
         }
@@ -35,28 +34,36 @@ data class AzureUser(
         val userIdNumValue = getAttributeValue(user, configUser.userIdNumAttribute)
 
         when {
-            valAttrValue.contains(requireNotNull(configUser.employeeValidator)) ->
+            valAttrValue.contains(requireNotNull(configUser.employeeValidator)) -> {
                 setEmployeeAndStudentIds(employeeId = userIdNumValue, studentId = null)
+            }
 
-            valAttrValue.contains(requireNotNull(configUser.studentValidator)) ->
+            valAttrValue.contains(requireNotNull(configUser.studentValidator)) -> {
                 setEmployeeAndStudentIds(employeeId = null, studentId = userIdNumValue)
+            }
         }
     }
 
-    private fun setEmployeeAndStudentIds(employeeId: String?, studentId: String?) {
-        val fieldEmployeeId = AzureUser::class.java.getDeclaredField("employeeId")
+    private fun setEmployeeAndStudentIds(
+        employeeId: String?,
+        studentId: String?,
+    ) {
+        val fieldEmployeeId = EntraUser::class.java.getDeclaredField("employeeId")
         fieldEmployeeId.isAccessible = true
         fieldEmployeeId.set(this, employeeId)
 
-        val fieldStudentId = AzureUser::class.java.getDeclaredField("studentId")
+        val fieldStudentId = EntraUser::class.java.getDeclaredField("studentId")
         fieldStudentId.isAccessible = true
         fieldStudentId.set(this, studentId)
     }
 
     companion object {
-        private val log = LoggerFactory.getLogger(AzureUser::class.java)
+        private val log = LoggerFactory.getLogger(EntraUser::class.java)
 
-        fun getAttributeValue(user: User, attributeName: String?): String? {
+        fun getAttributeValue(
+            user: User,
+            attributeName: String?,
+        ): String? {
             if (attributeName == null) return null
 
             val attributeParts = attributeName.split(".")
@@ -69,7 +76,7 @@ data class AzureUser(
                     log.debug(
                         "getAttributeValue expected {}, but this is not found: {}",
                         attributeName,
-                        e.message
+                        e.message,
                     )
                     null
                 }

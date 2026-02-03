@@ -24,19 +24,19 @@ fint:
     ms-graph-gateway:
       user:
         #Set variable user Attributes. Case sensitive. See User Object in Graph
-        use-same-id-num-attribute:
-        user-id-num-attribute:
-        validator-attribute:
-        student-validator:
-        employee-validator:
-        employeeidattribute:
-        studentidattribute:
-        mainorgunitidattribute:
-        mainorgunitnameattribute:
-        enableexternalusers:
-        externaluserattribute:
-        externaluservalue:
-        userpagingsize: 100
+        use-same-id-num-attribute: false
+        user-id-num-attribute: employeeId
+        validator-attribute: employeeType
+        student-validator: elev
+        employee-validator: tilsett
+        employeeidattribute: onPremisesExtensionAttributes.extensionAttribute10
+        studentidattribute: onPremisesExtensionAttributes.extensionAttribute9
+        mainorgunitidattribute: extension_be2ffab7d262452b888aeb756f742377_MainOrgUnitId
+        mainorgunitnameattribute: extension_be2ffab7d262452b888aeb756f742377_MainOrgUnitName
+        enableexternalusers: false
+        externaluserattribute: onPremisesExtensionAttributes.extensionAttribute11
+        externaluservalue: ----
+        userpagingsize: 999
         stale-after-days: 21
         accepted-deviation-percent: 5
         min-not-seen-count: 7
@@ -44,6 +44,7 @@ fint:
             delta:
               initial-delay-ms: 1000
               fixed-delay-ms: 450000
+
             full-import:
               cron: 0 0 12 * * *
 

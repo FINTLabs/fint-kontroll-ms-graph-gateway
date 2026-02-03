@@ -7,3 +7,11 @@ spring:
   flyway:
     locations: classpath:db/migration
     lock-retry-count: 300
+  jpa:
+    open-in-view: false
+    properties:
+      hibernate:
+        transaction:
+          coordinator_class: jdbc
+  jta:
+    enabled: false

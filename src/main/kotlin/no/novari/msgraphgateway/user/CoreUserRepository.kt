@@ -11,35 +11,40 @@ import java.util.*
 
 @Repository
 class CoreUserRepository(
-    private val jdbc: NamedParameterJdbcTemplate
+    private val jdbc: NamedParameterJdbcTemplate,
 ) {
-    private val findStaleObjectsByIdSql = """
+    private val findStaleObjectsByIdSql =
+        """
         SELECT object_id
         FROM users
         WHERE last_seen_at < :cutoff
-    """.trimIndent()
+        """.trimIndent()
 
-    private val findStaleWithNotSeenCountGreaterThanSql = """
-    SELECT object_id
-    FROM users
-    WHERE last_seen_at < :cutoff
-      AND not_seen_count > :minNotSeenCount
-""".trimIndent()
+    private val findStaleWithNotSeenCountGreaterThanSql =
+        """
+        SELECT object_id
+        FROM users
+        WHERE last_seen_at < :cutoff
+          AND not_seen_count > :minNotSeenCount
+        """.trimIndent()
 
-    private val countAllSql = """
+    private val countAllSql =
+        """
         SELECT COUNT(*) FROM users
-    """.trimIndent()
+        """.trimIndent()
 
-    private val deleteByIdSql = """
+    private val deleteByIdSql =
+        """
         DELETE FROM users
         WHERE object_id = :objectId
-    """.trimIndent()
+        """.trimIndent()
 
-    private val deleteByIdsSql = """
+    private val deleteByIdsSql =
+        """
         DELETE FROM users
         WHERE object_id IN (:objectIds)
         RETURNING object_id
-    """.trimIndent()
+        """.trimIndent()
 
     /**
      * Upserts (object_id, checksum, last_seen_at).
@@ -47,7 +52,8 @@ class CoreUserRepository(
      * - not_seen_count: reset to 0 on update/insert (since we just "saw" it)
      * Returns object_ids where checksum changed compared to previous value.
      */
-    private val batchUpsertReturningChangedSql = """
+    private val batchUpsertReturningChangedSql =
+        """
         WITH input AS (
           SELECT *
           FROM unnest(
@@ -84,12 +90,12 @@ class CoreUserRepository(
         FROM input_with_old i
         JOIN upsert u USING (object_id)
         WHERE i.old_checksum IS DISTINCT FROM i.checksum
-    """.trimIndent()
+        """.trimIndent()
 
     data class UpsertRow(
         val objectId: UUID,
         val checksum: ByteArray,
-        val lastSeenAt: Instant
+        val lastSeenAt: Instant,
     )
 
     fun batchUpsertReturningChanged(rows: List<UpsertRow>): Set<UUID> {
@@ -99,16 +105,19 @@ class CoreUserRepository(
         val checksums = rows.map { it.checksum }.toTypedArray()
         val lastSeenAts = rows.map { it.lastSeenAt }.toTypedArray()
 
-        val result = jdbc.jdbcTemplate.execute { conn: Connection ->
-            val params = MapSqlParameterSource()
-                .addValue("objectIds", conn.createArrayOf("uuid", objectIds))
-                .addValue("checksums", conn.createArrayOf("bytea", checksums))
-                .addValue("lastSeenAts", conn.createArrayOf("timestamptz", lastSeenAts))
+        val result =
+            jdbc.jdbcTemplate.execute { conn: Connection ->
+                val params =
+                    MapSqlParameterSource()
+                        .addValue("objectIds", conn.createArrayOf("uuid", objectIds))
+                        .addValue("checksums", conn.createArrayOf("bytea", checksums))
+                        .addValue("lastSeenAts", conn.createArrayOf("timestamptz", lastSeenAts))
 
-            jdbc.query(batchUpsertReturningChangedSql, params) { rs, _ ->
-                rs.getObject("object_id", UUID::class.java)
-            }.toSet()
-        } ?: emptySet()
+                jdbc
+                    .query(batchUpsertReturningChangedSql, params) { rs, _ ->
+                        rs.getObject("object_id", UUID::class.java)
+                    }.toSet()
+            } ?: emptySet()
 
         return result
     }
@@ -118,7 +127,7 @@ class CoreUserRepository(
         return jdbc.query(
             findStaleObjectsByIdSql,
             params,
-            { rs: ResultSet?, _: Int -> rs!!.getObject("object_id", UUID::class.java) }
+            { rs: ResultSet?, _: Int -> rs!!.getObject("object_id", UUID::class.java) },
         )
     }
 
@@ -133,11 +142,12 @@ class CoreUserRepository(
         return jdbc.query(deleteByIdsSql, params) { rs, _ -> rs.getObject("object_id", UUID::class.java) }
     }
 
-    private val incrementNotSeenCountSql = """
+    private val incrementNotSeenCountSql =
+        """
         UPDATE users
         SET not_seen_count = not_seen_count + 1
         WHERE object_id IN (:objectIds)
-    """.trimIndent()
+        """.trimIndent()
 
     fun incrementNotSeenCount(objectIds: Collection<UUID>) {
         if (objectIds.isEmpty()) return
@@ -145,25 +155,25 @@ class CoreUserRepository(
         jdbc.update(incrementNotSeenCountSql, params)
     }
 
-    fun getCount(): Int {
-        return jdbc.queryForObject(
+    fun getCount(): Int =
+        jdbc.queryForObject(
             countAllSql,
             MapSqlParameterSource(),
-            Int::class.java
+            Int::class.java,
         ) ?: 0
-    }
 
     fun findStaleObjectIdsWithNotSeenCountGreaterThan(
         cutoff: Instant,
-        minNotSeenCount: Int
+        minNotSeenCount: Int,
     ): List<UUID> {
-        val params = MapSqlParameterSource()
-            .addValue("cutoff", cutoff.atOffset(ZoneOffset.UTC))
-            .addValue("minNotSeenCount", minNotSeenCount)
+        val params =
+            MapSqlParameterSource()
+                .addValue("cutoff", cutoff.atOffset(ZoneOffset.UTC))
+                .addValue("minNotSeenCount", minNotSeenCount)
 
         return jdbc.query(
             findStaleWithNotSeenCountGreaterThanSql,
-            params
+            params,
         ) { rs, _ -> rs.getObject("object_id", UUID::class.java) }
     }
 }
