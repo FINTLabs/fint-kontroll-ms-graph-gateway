@@ -15,6 +15,7 @@ logging:
     org.apache: WARN
     org.springframework.boot.autoconfigure.flyway: DEBUG
     org.flywaydb: DEBUG
+    no.novari: INFO
 
 novari:
   application-id: fint-kontroll-ms-graph-gateway
@@ -42,7 +43,6 @@ fint:
         min-not-seen-count: 7
         user-scheduler:
             delta:
-              initial-delay-ms: 1000
               fixed-delay-ms: 450000
 
             full-import:

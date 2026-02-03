@@ -40,6 +40,7 @@ class EntraUserSyncService(
         for (batch in users.chunked(batchSize)) {
             val published = processBatch(batch)
             publishedTotal += published
+
         }
         return publishedTotal
     }
@@ -80,8 +81,8 @@ class EntraUserSyncService(
         coroutineScope {
             val now = Instant.now()
 
-            val removedUsers = batch.filter { it.additionalData.containsKey("@removed") }
-            removedUsers.size
+        val removedUsers = batch.filter { it.additionalData.containsKey("@removed") }
+        log.info("There are ${removedUsers.size} removed users")
 
             for (u in removedUsers) {
                 handleRemoved(u.id)
@@ -125,42 +126,45 @@ class EntraUserSyncService(
             val rows = ArrayList<CoreUserRepository.UpsertRow>(computed.size)
             val dtoById = HashMap<UUID, EntraUser>(computed.size)
 
-            for (c in computed) {
-                rows +=
-                    CoreUserRepository.UpsertRow(
-                        objectId = c.id,
-                        checksum = c.checksum,
-                        lastSeenAt = now,
-                    )
-                dtoById[c.id] = c.dto
+        for (c in computed) {
+            rows += CoreUserRepository.UpsertRow(
+                objectId = c.id,
+                checksum = c.checksum,
+                lastSeenAt = now
+            )
+            dtoById[c.id] = c.dto
+        }
+        log.info("There are ${dtoById.size} dtos to upsert")
+        val changedIds: Set<UUID> = dbBatchPermits.withPermit {
+            withContext(Dispatchers.IO) {
+                coreUserRepository.batchUpsertReturningChanged(rows)
+            }
+        }
+        log.info("There are ${changedIds.size} changed users")
+        val publishJobs = changedIds.mapNotNull { id ->
+            val dto = dtoById[id] ?: return@mapNotNull null
+            log.info("Processing user with id: ${dto.id}")
+            println(dto.toString())
+            if (isExternal(dto)) {
+                return@mapNotNull null
+                // publish as external user if it has the property
             }
 
-            val changedIds: Set<UUID> =
-                dbBatchPermits.withPermit {
-                    withContext(Dispatchers.IO) {
-                        coreUserRepository.batchUpsertReturningChanged(rows)
+            async(Dispatchers.IO) {
+                runCatching {
+                    kafkaPermits.withPermit {
+                        log.info("Publishing user {}", dto.id)
+                        producer.publish(dto)
                     }
-                }
+                }.onFailure { log.warn("Failed publishing user {}", dto.id, it) }
 
-            val publishJobs =
-                changedIds.mapNotNull { id ->
-                    val dto = dtoById[id] ?: return@mapNotNull null
-                    if (isExternal(dto)) {
-                        return@mapNotNull null
-                        // publish as external user if it has the property
-                    }
-
-                    async(Dispatchers.IO) {
-                        kafkaPermits.withPermit {
-                            producer.publish(dto)
-                        }
-                        true
-                    }
-                }
-
-            val publishedCount = publishJobs.awaitAll().count { it }
-            return@coroutineScope publishedCount
+            }
         }
+
+        log.info("Waiting for ${publishJobs.size} publish jobs to complete")
+        val publishedCount = publishJobs.awaitAll().count { it.isSuccess }
+        return@coroutineScope publishedCount
+    }
 
     private suspend fun handleRemoved(userId: String?) {
         if (userId.isNullOrBlank()) return
