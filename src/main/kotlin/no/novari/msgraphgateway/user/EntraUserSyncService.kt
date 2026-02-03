@@ -136,6 +136,7 @@ class EntraUserSyncService(
         val publishJobs = changedIds.mapNotNull { id ->
             val dto = dtoById[id] ?: return@mapNotNull null
             log.info("Processing user with id: ${dto.id}")
+            println(dto.toString())
             if (isExternal(dto)) {
                 return@mapNotNull null
                 // publish as external user if it has the property
