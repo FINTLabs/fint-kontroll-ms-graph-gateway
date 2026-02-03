@@ -27,8 +27,8 @@ class AzureUserProducerService(
 
     init {
         val topicNamePrefixParameters = TopicNamePrefixParameters.stepBuilder()
-            .orgIdCommon()
-            .domainContextCommon()
+            .orgIdApplicationDefault()
+            .domainContextApplicationDefault()
             .build()
 
         entityTopicNameParameters = EntityTopicNameParameters.builder()

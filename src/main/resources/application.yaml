@@ -20,6 +20,12 @@ logging:
 novari:
   application-id: fint-kontroll-ms-graph-gateway
   org-id: fintlabs.no
+  kafka:
+    topic:
+      org-id: fintlabs-no
+      domain-context: kontroll
+    application-id: fintlabs.no
+    default-replicas: 1
 fint:
   kontroll:
     ms-graph-gateway:
@@ -41,11 +47,11 @@ fint:
         stale-after-days: 21
         accepted-deviation-percent: 5
         min-not-seen-count: 7
-        user-scheduler:
-            delta:
-              fixed-delay-ms: 450000
-            full-import:
-              cron: 0 0 12 * * *
+      user-scheduler:
+        delta:
+          fixed-delay-ms: 450000
+        full-import:
+          cron: 0 0 12 * * *
 
 
 

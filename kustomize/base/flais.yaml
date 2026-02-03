@@ -7,7 +7,9 @@ spec:
   orgId: fintlabs.no
   image: ghcr.io/fintlabs/fint-kontroll-ms-graph-gateway:latest
   imagePullPolicy: Always
-  env: []
+  env:
+    - name: spring.kafka.consumer.group-id
+      value: 'fint-kontroll-ms-graph-gateway'
   envFrom:
     - secretRef:
         name: fint-kontroll-ms-graph-gateway
