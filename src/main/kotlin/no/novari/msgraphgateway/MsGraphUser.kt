@@ -55,7 +55,7 @@ class MsGraphUser(
     )
     fun pullAllUsersDelta() {
         log.info("Config user")
-        log.info(configUser.toString())
+        log.info(configUser.allAttributes().joinToString(", "))
         if (fullImportRequested.get()) {
             log.info("Full import pending; skipping delta run")
             return
