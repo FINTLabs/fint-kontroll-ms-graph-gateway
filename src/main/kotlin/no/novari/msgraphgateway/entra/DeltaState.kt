@@ -1,4 +1,4 @@
-package no.novari.msgraphgateway.azure
+package no.novari.msgraphgateway.entra
 
 import jakarta.persistence.*
 import org.hibernate.annotations.UpdateTimestamp

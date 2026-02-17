@@ -13,8 +13,8 @@ logging:
     com.azure: WARN
     com.microsoft: WARN
     org.apache: WARN
-    org.springframework.boot.autoconfigure.flyway: DEBUG
-    org.flywaydb: DEBUG
+    org.springframework.boot.autoconfigure.flyway: INFO
+    org.flywaydb: INFO
     no.novari: INFO
 
 novari:
@@ -26,33 +26,40 @@ novari:
       domain-context: kontroll
     application-id: fintlabs.no
     default-replicas: 1
-fint:
-  kontroll:
-    ms-graph-gateway:
-      user:
-        #Set variable user Attributes. Case sensitive. See User Object in Graph
-        use-same-id-num-attribute: false
-        user-id-num-attribute: employeeId
-        validator-attribute: employeeType
-        student-validator: elev
-        employee-validator: tilsett
-        employeeidattribute: onPremisesExtensionAttributes.extensionAttribute10
-        studentidattribute: onPremisesExtensionAttributes.extensionAttribute9
-        mainorgunitidattribute: extension_be2ffab7d262452b888aeb756f742377_MainOrgUnitId
-        mainorgunitnameattribute: extension_be2ffab7d262452b888aeb756f742377_MainOrgUnitName
-        enableexternalusers: false
-        externaluserattribute: onPremisesExtensionAttributes.extensionAttribute11
-        externaluservalue: ----
-        userpagingsize: 999
-        stale-after-days: 21
-        accepted-deviation-percent: 5
-        min-not-seen-count: 7
-        user-scheduler:
-            delta:
-              fixed-delay-ms: 450000
-              initial-delay-ms: 1000
-            full-import:
-              cron: 0 0 12 * * *
+  scheduler:
+    user:
+      delta:
+        fixed-delay-ms: 450000
+        initial-delay-ms: 1000
+      full-import:
+        cron: 0 0 12 * * *
 
+ms-graph:
+  user:
+    #Set variable user Attributes. Case sensitive. See User Object in Graph
+    use-same-id-num-attribute: ${ms-graph.user.use-same-id-num-attribute}
+    user-id-num-attribute: ${ms-graph.user.user-id-num-attribute}
+    validator-attribute: ${ms-graph.user.validator-attribute}
+    student-validator: ${ms-graph.user.student-validator}
+    employee-validator: ${ms-graph.user.employee-validator}
+    employeeidattribute: ${ms-graph.user.employeeidattribute}
+    studentidattribute: ${ms-graph.user.studentidattribute}
+    mainorgunitidattribute: ${ms-graph.user.mainorgunitidattribute}
+    mainorgunitnameattribute: ${ms-graph.user.mainorgunitnameattribute}
+    enableexternalusers: ${ms-graph.user.enableexternalusers}
+    externaluserattribute: ${ms-graph.user.externaluservalue}
+    externaluservalue: ${ms-graph.user.externaluservalue}
+    userpagingsize: 999
+    stale-after-days: 21
+    accepted-deviation-percent: 5
+    min-not-seen-count: 7
+
+
+#placeholders
+  credentials:
+    clientid: ${ms-graph.credentials.clientid}
+    clientsecret: ${ms-graph.credentials.clientidsecret}
+    tenantid: ${ms-graph.credentials.tenantid}
+    entobjectid: ${ms-graph.credentials.entobjectid}
 
 

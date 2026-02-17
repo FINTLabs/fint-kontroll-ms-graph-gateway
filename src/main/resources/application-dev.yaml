@@ -1,15 +1,17 @@
-spring:
-  datasource:
-    url: jdbc:postgresql://localhost:5432/postgres?currentSchema=ms-graph-gateway
-    username:
-    password:
+logging:
+  level:
+    com.azure: WARN
+    com.microsoft: WARN
+    org.apache: WARN
+    org.springframework.boot.autoconfigure.flyway: INFO
+    org.flywaydb: INFO
+    no.novari: INFO
 
-
-#placeholders. Do not add creds
-azure:
-  timeout: 1
-  credentials:
-    clientid: XXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
-    clientsecret: XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-    tenantguid: XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
-    entobjectid: XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
+novari:
+  scheduler:
+    user:
+      delta:
+        fixed-delay-ms: 20000
+        initial-delay-ms: 1000
+      full-import:
+        cron: "*/33 * * * * *"

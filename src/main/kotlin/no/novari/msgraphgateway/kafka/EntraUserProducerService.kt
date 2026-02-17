@@ -1,4 +1,4 @@
-package no.novari.msgraphgateway.azure
+package no.novari.msgraphgateway.entra
 
 import no.novari.kafka.producing.ParameterizedProducerRecord
 import no.novari.kafka.producing.ParameterizedTemplate
@@ -8,14 +8,13 @@ import no.novari.kafka.topic.configuration.EntityCleanupFrequency
 import no.novari.kafka.topic.configuration.EntityTopicConfiguration
 import no.novari.kafka.topic.name.EntityTopicNameParameters
 import no.novari.kafka.topic.name.TopicNamePrefixParameters
-import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.time.Duration
 
 @Service
 class EntraUserProducerService(
     private val parameterizedTemplateFactory: ParameterizedTemplateFactory,
-    entityTopicService: EntityTopicService
+    entityTopicService: EntityTopicService,
 ) {
     private val entraUserTemplate: ParameterizedTemplate<EntraUser> by lazy {
         parameterizedTemplateFactory.createTemplate(EntraUser::class.java)
@@ -24,10 +23,12 @@ class EntraUserProducerService(
     private val entityTopicNameParameters: EntityTopicNameParameters
 
     init {
-        val topicNamePrefixParameters = TopicNamePrefixParameters.stepBuilder()
-            .orgIdApplicationDefault()
-            .domainContextApplicationDefault()
-            .build()
+        val topicNamePrefixParameters =
+            TopicNamePrefixParameters
+                .stepBuilder()
+                .orgIdApplicationDefault()
+                .domainContextApplicationDefault()
+                .build()
 
         entityTopicNameParameters =
             EntityTopicNameParameters
@@ -53,7 +54,7 @@ class EntraUserProducerService(
             ParameterizedProducerRecord
                 .builder<EntraUser>()
                 .topicNameParameters(entityTopicNameParameters)
-                .key(entraUser.idpUserObjectId)
+                .key(entraUser.userObjectId)
                 .value(entraUser)
                 .build(),
         )
@@ -66,7 +67,7 @@ class EntraUserProducerService(
                 .topicNameParameters(entityTopicNameParameters)
                 .key(userId)
                 .value(null)
-                .build()
+                .build(),
         )
     }
 }

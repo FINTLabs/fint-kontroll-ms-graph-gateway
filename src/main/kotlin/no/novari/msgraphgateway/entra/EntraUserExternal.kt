@@ -1,6 +1,5 @@
-package no.novari.msgraphgateway.azure
+package no.novari.msgraphgateway.entra
 
-import com.microsoft.graph.models.OnPremisesExtensionAttributes
 import com.microsoft.graph.models.User
 import no.novari.msgraphgateway.config.ConfigUser
 import java.io.Serializable
@@ -11,14 +10,14 @@ data class EntraUserExternal(
     val mobilePhone: String? = null,
     val email: String? = null,
     val userName: String? = null,
-    val idpUserObjectId: String? = null,
+    val userObjectId: String? = null,
     val userPrincipalName: String? = null,
     val accountEnabled: Boolean? = null,
     var mainOrganisationUnitName: String? = null,
     var mainOrganisationUnitId: String? = null,
 ) : Serializable {
     constructor(user: User, configUser: ConfigUser) : this(
-        idpUserObjectId = user.id,
+        userObjectId = user.id,
         userPrincipalName = user.userPrincipalName,
         accountEnabled = user.accountEnabled,
         firstName = user.givenName,

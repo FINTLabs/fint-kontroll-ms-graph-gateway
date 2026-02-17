@@ -1,3 +1,5 @@
+@file:Suppress("ktlint:standard:no-wildcard-imports")
+
 package no.novari.msgraphgateway
 
 import com.microsoft.graph.serviceclient.GraphServiceClient
@@ -7,8 +9,9 @@ import jakarta.annotation.PostConstruct
 import jakarta.annotation.PreDestroy
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
-import no.novari.msgraphgateway.azure.DeltaLinkStore
 import no.novari.msgraphgateway.config.ConfigUser
+import no.novari.msgraphgateway.entra.DeltaLinkStore
+import no.novari.msgraphgateway.user.CoreUserExternalRepository
 import no.novari.msgraphgateway.user.CoreUserRepository
 import no.novari.msgraphgateway.user.EntraUserSyncService
 import org.slf4j.LoggerFactory
@@ -16,7 +19,9 @@ import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import java.time.Instant
 import java.time.temporal.ChronoUnit
+import java.util.UUID
 import java.util.concurrent.CompletionException
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 
 @Component
@@ -26,6 +31,7 @@ class MsGraphUser(
     private val entraUserSyncService: EntraUserSyncService,
     private val deltaLinkStore: DeltaLinkStore,
     private val coreUserRepository: CoreUserRepository,
+    private val coreUserExternalRepository: CoreUserExternalRepository,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val runMutex = Mutex()
@@ -50,8 +56,8 @@ class MsGraphUser(
     }
 
     @Scheduled(
-        initialDelayString = "\${fint.kontroll.ms-graph-gateway.user.user-scheduler.delta.initial-delay-ms}",
-        fixedDelayString = "\${fint.kontroll.ms-graph-gateway.user.user-scheduler.delta.fixed-delay-ms}",
+        initialDelayString = $$"${novari.scheduler.user.delta.initial-delay-ms}",
+        fixedDelayString = $$"${novari.scheduler.user.delta.fixed-delay-ms}",
     )
     fun pullAllUsersDelta() {
         if (fullImportRequested.get()) {
@@ -98,7 +104,8 @@ class MsGraphUser(
                         }
                     }
 
-                pageThroughUsers(firstPage, isFullImport = false)
+                val notSeenIncremented = ConcurrentHashMap.newKeySet<UUID>()
+                pageThroughUsers(firstPage, isFullImport = false, notSeenIncremented = notSeenIncremented)
             } catch (e: RuntimeException) {
                 log.error("Delta users pull failed: {}", e.message, e)
             } finally {
@@ -109,7 +116,7 @@ class MsGraphUser(
         }
     }
 
-    @Scheduled(cron = "\${fint.kontroll.ms-graph-gateway.user-scheduler.full-import-cron:0 0 2 * * *}")
+    @Scheduled(cron = $$"${novari.scheduler.user.full-import.cron}")
     fun fullImportUsers() {
         fullImportRequested.set(true)
 
@@ -146,6 +153,9 @@ class MsGraphUser(
 
     private suspend fun startFullImport() {
         val runStartTime = Instant.now()
+        val notSeenIncremented =
+            ConcurrentHashMap
+                .newKeySet<UUID>()
         if (!shouldContinueWithImport()) {
             return
         }
@@ -167,30 +177,44 @@ class MsGraphUser(
                     }
             }
 
-        val result = pageThroughUsers(firstPage, isFullImport = true)
-        markNotSeenUsers(runStartTime)
+        val result = pageThroughUsers(firstPage, isFullImport = true, notSeenIncremented = notSeenIncremented)
+        markNotSeenUsers(runStartTime, notSeenIncremented)
         val cutoff = Instant.now().minus(configUser.staleAfterDays.toLong(), ChronoUnit.DAYS)
-        val deleted =
-            withContext(Dispatchers.IO) {
-                entraUserSyncService.finishFullImport(cutoff)
-            }
+        val deletedUsers = withContext(Dispatchers.IO) { entraUserSyncService.finishFullImport(cutoff) }
+        val deletedExternal = withContext(Dispatchers.IO) { entraUserSyncService.finishFullImportExternal(cutoff) }
 
         log.info(
-            "Full import completed (fetchedTotal={}, publishedChanged={}, publishedDeleted={})",
+            "Full import completed (fetchedTotal={}, publishedChanged={}, publishedDeleted={}, publishedDeletedExternal={})",
             result.totalUsersSeen,
             result.publishedUsers,
-            deleted,
+            deletedUsers,
+            deletedExternal,
         )
     }
 
-    private suspend fun markNotSeenUsers(startTime: Instant) {
-        val staleIds =
+    private suspend fun markNotSeenUsers(
+        startTime: Instant,
+        notSeenIncremented: MutableSet<UUID>,
+    ) {
+        val staleUserIds =
             withContext(Dispatchers.IO) {
                 coreUserRepository.findStaleObjectIds(startTime)
-            }
-        log.info("Marking {} stale users as not seen", staleIds.size)
+            }.filter { notSeenIncremented.add(it) } // add() returnerer false hvis allerede der
 
-        coreUserRepository.incrementNotSeenCount(staleIds)
+        log.info("Marking {} stale users as not seen", staleUserIds.size)
+        withContext(Dispatchers.IO) {
+            coreUserRepository.incrementNotSeenCount(staleUserIds)
+        }
+
+        val staleExternalIds =
+            withContext(Dispatchers.IO) {
+                coreUserExternalRepository.findStaleObjectIds(startTime)
+            }.filter { notSeenIncremented.add(it) }
+
+        log.info("Marking {} stale external users as not seen", staleExternalIds.size)
+        withContext(Dispatchers.IO) {
+            coreUserExternalRepository.incrementNotSeenCount(staleExternalIds)
+        }
     }
 
     private fun shouldContinueWithImport(): Boolean {
@@ -219,6 +243,7 @@ class MsGraphUser(
     private suspend fun pageThroughUsers(
         firstPage: DeltaGetResponse?,
         isFullImport: Boolean,
+        notSeenIncremented: MutableSet<UUID>,
     ): PageResult {
         var current: DeltaGetResponse? = firstPage
         var last: DeltaGetResponse? = firstPage
@@ -245,7 +270,7 @@ class MsGraphUser(
 
                 val publishedThisPage =
                     withContext(Dispatchers.IO) {
-                        entraUserSyncService.processPage(value)
+                        entraUserSyncService.processPage(value, notSeenIncremented)
                     }
                 totalPublished += publishedThisPage
             } else {

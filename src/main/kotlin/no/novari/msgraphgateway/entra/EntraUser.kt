@@ -1,4 +1,4 @@
-package no.novari.msgraphgateway.azure
+package no.novari.msgraphgateway.entra
 import com.microsoft.graph.models.OnPremisesExtensionAttributes
 import com.microsoft.graph.models.User
 import no.novari.msgraphgateway.config.ConfigUser
@@ -11,16 +11,16 @@ data class EntraUser(
     val userPrincipalName: String? = null,
     var employeeId: String? = null,
     var studentId: String? = null,
-    val idpUserObjectId: String? = null,
+    val userObjectId: String? = null,
     val accountEnabled: Boolean? = null,
-    val validatorAttribute: String? = null
+    val validatorAttribute: String? = null,
 ) : Serializable {
     constructor(user: User, configUser: ConfigUser) : this(
         mail = user.mail,
         id = user.id,
         userPrincipalName = user.userPrincipalName,
-        idpUserObjectId = user.id,
-        accountEnabled = user.accountEnabled
+        userObjectId = user.id,
+        accountEnabled = user.accountEnabled,
     ) {
         if (!configUser.useSameIdNumAttribute) {
             employeeId = getAttributeValue(user, configUser.employeeidattribute)
@@ -37,32 +37,24 @@ data class EntraUser(
         } else if (configUser.studentValidator?.let(valAttrValue::contains) == true) {
             studentId = userIdNumValue
         }
-
     }
-
 
     companion object {
         private val log = LoggerFactory.getLogger(EntraUser::class.java)
 
-        fun getAttributeValue(user: User, attributeName: String?): String? {
+        fun getAttributeValue(
+            user: User,
+            attributeName: String?,
+        ): String? {
             if (attributeName == null) return null
 
             val attributeParts = attributeName.split(".")
             return if (attributeParts[0] == "onPremisesExtensionAttributes") {
-                val attributeValues: OnPremisesExtensionAttributes? =
-                    user.onPremisesExtensionAttributes
-                try {
-                    attributeValues?.backingStore?.get(attributeParts[1]) as String
-                } catch (e: NullPointerException) {
-                    log.debug(
-                        "getAttributeValue expected {}, but this is not found: {}",
-                        attributeName,
-                        e.message
-                    )
-                    return null
-                }
+                user.onPremisesExtensionAttributes
+                    ?.backingStore
+                    ?.get(attributeParts[1])
             } else {
-                user.backingStore.get(attributeName) as? String
+                user.backingStore.get(attributeName)
             }
         }
     }

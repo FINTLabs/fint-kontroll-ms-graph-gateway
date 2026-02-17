@@ -1,13 +1,17 @@
+@file:Suppress("ktlint:standard:no-wildcard-imports")
+
 package no.novari.msgraphgateway.user
 
 import com.microsoft.graph.models.User
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
-import no.novari.msgraphgateway.azure.ChecksumService
-import no.novari.msgraphgateway.azure.EntraUser
-import no.novari.msgraphgateway.azure.EntraUserProducerService
 import no.novari.msgraphgateway.config.ConfigUser
+import no.novari.msgraphgateway.entra.ChecksumService
+import no.novari.msgraphgateway.entra.EntraUser
+import no.novari.msgraphgateway.entra.EntraUserExternal
+import no.novari.msgraphgateway.entra.EntraUserExternalProducerService
+import no.novari.msgraphgateway.entra.EntraUserProducerService
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.time.Instant
@@ -16,49 +20,63 @@ import java.util.*
 @Service
 class EntraUserSyncService(
     private val coreUserRepository: CoreUserRepository,
+    private val coreUserExternalRepository: CoreUserExternalRepository,
     private val checksumService: ChecksumService,
     private val producer: EntraUserProducerService,
+    private val externalProducer: EntraUserExternalProducerService,
     private val configUser: ConfigUser,
 ) {
-    /**
-     * Parameters for tuning concurrency:
-     * - batchSize: how many users to send to the DB in each batch
-     * - checksumPermits: how many checksums can be computed in parallel
-     * - dbBatchPermits: how many DB calls can be made in parallel
-     * - kafkaPermits: how many messages can be published in parallel
-     */
-
     private val batchSize = 1000
     private val checksumPermits = Semaphore(32)
     private val dbBatchPermits = Semaphore(2)
     private val kafkaPermits = Semaphore(100)
 
-    suspend fun processPage(users: List<User>?): Int {
+    suspend fun processPage(
+        users: List<User>?,
+        notSeenIncremented: MutableSet<UUID>,
+    ): Int {
         if (users.isNullOrEmpty()) return 0
-
         var publishedTotal = 0
         for (batch in users.chunked(batchSize)) {
-            val published = processBatch(batch)
-            publishedTotal += published
-
+            publishedTotal += processBatch(batch, notSeenIncremented)
         }
         return publishedTotal
     }
 
-    suspend fun finishFullImport(cutoff: Instant): Int {
+    suspend fun finishFullImport(cutoff: Instant): Int =
+        finishFullImportFor(
+            repo = coreUserRepository,
+            cutoff = cutoff,
+            publishDeleted = { id -> producer.publishDeletedUser(id) },
+            label = "users",
+        )
+
+    suspend fun finishFullImportExternal(cutoff: Instant): Int =
+        finishFullImportFor(
+            repo = coreUserExternalRepository,
+            cutoff = cutoff,
+            publishDeleted = { id -> externalProducer.publishDeletedUser(id) },
+            label = "external users",
+        )
+
+    private suspend fun finishFullImportFor(
+        repo: UserStateRepository,
+        cutoff: Instant,
+        publishDeleted: suspend (String) -> Unit,
+        label: String,
+    ): Int {
         val deletableIds =
             withContext(Dispatchers.IO) {
-                coreUserRepository.findStaleObjectIdsWithNotSeenCountGreaterThan(cutoff, configUser.minNotSeenCount)
+                repo.findStaleObjectIdsWithNotSeenCountGreaterThan(cutoff, configUser.minNotSeenCount)
             }
-        log.info("Found {} stale users", deletableIds.size)
+        log.info("Found {} stale {}", deletableIds.size, label)
         if (deletableIds.isEmpty()) return 0
 
         var deletedTotal = 0
-
         for (batch in deletableIds.chunked(batchSize)) {
             val deletedObjectIds =
                 withContext(Dispatchers.IO) {
-                    coreUserRepository.deleteByIdsReturningObjectIds(batch)
+                    repo.deleteByIdsReturningObjectIds(batch)
                 }
             deletedTotal += deletedObjectIds.size
 
@@ -67,139 +85,182 @@ class EntraUserSyncService(
                     .map { objectId ->
                         async(Dispatchers.IO) {
                             kafkaPermits.withPermit {
-                                producer.publishDeletedUser(objectId.toString())
+                                publishDeleted(objectId.toString())
                             }
                         }
                     }.awaitAll()
             }
         }
-
         return deletedTotal
     }
 
-    private suspend fun processBatch(batch: List<User>): Int =
+    private suspend fun processBatch(
+        batch: List<User>,
+        notSeenIncremented: MutableSet<UUID>,
+    ): Int =
         coroutineScope {
             val now = Instant.now()
 
-        val removedUsers = batch.filter { it.additionalData.containsKey("@removed") }
-        log.info("There are ${removedUsers.size} removed users")
-
-            for (u in removedUsers) {
-                handleRemoved(u.id)
+            val removedUsers = batch.filter { it.additionalData.containsKey("@removed") }
+            if (removedUsers.isNotEmpty()) {
+                log.debug("There are {} removed users", removedUsers.size)
+                removedUsers.forEach { u ->
+                    handleRemoved(u.id, notSeenIncremented)
+                }
             }
 
-            val activePairs: List<Pair<UUID, EntraUser>> =
+            val candidates: List<Pair<UUID, User>> =
                 batch
                     .asSequence()
                     .filter { !it.additionalData.containsKey("@removed") }
-                    .filter { u ->
-                        return@filter u.userType?.equals("member", ignoreCase = true) ?: false
-                    }.mapNotNull { u ->
-                        val id = parseObjectIdOrNull(u.id)
-                        if (id == null) {
-                            return@mapNotNull null
-                        }
-                        val dto = EntraUser(u, configUser)
-                        return@mapNotNull id to dto
+                    .filter { it.userType?.equals("member", ignoreCase = true) ?: false }
+                    .mapNotNull { u ->
+                        val id = parseObjectIdOrNull(u.id) ?: return@mapNotNull null
+                        id to u
                     }.toList()
 
-            if (activePairs.isEmpty()) {
-                return@coroutineScope 0
+            if (candidates.isEmpty()) return@coroutineScope 0
+
+            val externals = ArrayList<Pair<UUID, User>>()
+            val normals = ArrayList<Pair<UUID, User>>()
+
+            for ((id, u) in candidates) {
+                if (isExternal(u)) externals += id to u else normals += id to u
             }
 
-            data class Computed(
+            val publishedUsers =
+                upsertAndPublish(
+                    now = now,
+                    repo = coreUserRepository,
+                    candidates = normals,
+                    toDto = { u -> EntraUser(u, configUser) },
+                    publish = { dto -> producer.publish(dto) },
+                    checksum = { dto -> checksumService.checksum(dto) },
+                    logLabel = "users",
+                )
+
+            val publishedExternal =
+                upsertAndPublish(
+                    now = now,
+                    repo = coreUserExternalRepository,
+                    candidates = externals,
+                    toDto = { u -> EntraUserExternal(u, configUser) },
+                    publish = { dto -> externalProducer.publish(dto) },
+                    checksum = { dto -> checksumService.checksum(dto) },
+                    logLabel = "external users",
+                )
+
+            publishedUsers + publishedExternal
+        }
+
+    private suspend fun <DTO : Any> upsertAndPublish(
+        now: Instant,
+        repo: UserStateRepository,
+        candidates: List<Pair<UUID, User>>,
+        toDto: (User) -> DTO,
+        checksum: (DTO) -> ByteArray,
+        publish: suspend (DTO) -> Unit,
+        logLabel: String,
+    ): Int =
+        coroutineScope {
+            if (candidates.isEmpty()) return@coroutineScope 0
+
+            data class Computed<DTO>(
                 val id: UUID,
-                val dto: EntraUser,
+                val dto: DTO,
                 val checksum: ByteArray,
             )
 
-            val computed: List<Computed> =
-                activePairs
-                    .map { (id, dto) ->
+            val computed: List<Computed<DTO>> =
+                candidates
+                    .map { (id, u) ->
                         async(Dispatchers.Default) {
+                            val dto = toDto(u)
                             checksumPermits.withPermit {
-                                Computed(id, dto, checksumService.checksum(dto))
+                                Computed(id, dto, checksum(dto))
                             }
                         }
                     }.awaitAll()
 
-            val rows = ArrayList<CoreUserRepository.UpsertRow>(computed.size)
-            val dtoById = HashMap<UUID, EntraUser>(computed.size)
+            val rows = ArrayList<UserStateRepository.UpsertRow>(computed.size)
+            val dtoById = HashMap<UUID, DTO>(computed.size)
 
-        for (c in computed) {
-            rows += CoreUserRepository.UpsertRow(
-                objectId = c.id,
-                checksum = c.checksum,
-                lastSeenAt = now
-            )
-            dtoById[c.id] = c.dto
-        }
-        val changedIds: Set<UUID> = dbBatchPermits.withPermit {
-            withContext(Dispatchers.IO) {
-                coreUserRepository.batchUpsertReturningChanged(rows)
-            }
-        }
-        log.info("There are ${changedIds.size} changed users")
-        val publishJobs = changedIds.mapNotNull { id ->
-            val dto = dtoById[id] ?: return@mapNotNull null
-            if (isExternal(dto)) {
-                return@mapNotNull null
-                // publish as external user if it has the property
+            for (c in computed) {
+                rows += UserStateRepository.UpsertRow(c.id, c.checksum, now)
+                dtoById[c.id] = c.dto
             }
 
-            async(Dispatchers.IO) {
-                runCatching {
-                    kafkaPermits.withPermit {
-                        producer.publish(dto)
+            val changedIds: Set<UUID> =
+                dbBatchPermits.withPermit {
+                    withContext(Dispatchers.IO) {
+                        repo.batchUpsertReturningChanged(rows)
                     }
-                }.onFailure { log.warn("Failed publishing user {}", dto.id, it) }
+                }
 
+            if (changedIds.isNotEmpty()) {
+                log.debug("There are {} changed {}", changedIds.size, logLabel)
             }
+
+            val jobs =
+                changedIds.mapNotNull { id ->
+                    val dto = dtoById[id] ?: return@mapNotNull null
+                    async(Dispatchers.IO) {
+                        runCatching {
+                            kafkaPermits.withPermit {
+                                publish(dto)
+                            }
+                        }.onFailure { log.warn("Failed publishing {} {}", logLabel, id, it) }
+                    }
+                }
+
+            jobs.awaitAll().count { it.isSuccess }
         }
 
-        log.info("Waiting for ${publishJobs.size} publish jobs to complete")
-        val publishedCount = publishJobs.awaitAll().count { it.isSuccess }
-        return@coroutineScope publishedCount
-    }
-
-    private suspend fun handleRemoved(userId: String?) {
+    private suspend fun handleRemoved(
+        userId: String?,
+        notSeenIncremented: MutableSet<UUID>,
+    ) {
         if (userId.isNullOrBlank()) return
+        val objectId = parseObjectIdOrNull(userId) ?: return
 
-        val objectId = parseObjectIdOrNull(userId)
-        if (objectId != null) {
-            try {
-                withContext(Dispatchers.IO) {
-                    coreUserRepository.deleteById(objectId)
-                }
-            } catch (e: Exception) {
-                log.warn("Failed deleting removed user {} from DB", objectId, e)
-            }
+        if (!notSeenIncremented.add(objectId)) {
+            log.debug("Removed user {} already marked not seen in this run; skipping", objectId)
+            return
         }
 
-        try {
-            withContext(Dispatchers.IO) {
-                kafkaPermits.withPermit {
-                    producer.publishDeletedUser(userId)
-                }
+        val existsInUsers =
+            runCatching { withContext(Dispatchers.IO) { coreUserRepository.existsById(objectId) } }
+                .getOrDefault(false)
+
+        val existsInExternal =
+            runCatching { withContext(Dispatchers.IO) { coreUserExternalRepository.existsById(objectId) } }
+                .getOrDefault(false)
+
+        when {
+            existsInUsers -> {
+                withContext(Dispatchers.IO) { coreUserRepository.incrementNotSeenCount(listOf(objectId)) }
+                log.debug("Marked user {} as not seen (+1) in users due to @removed", objectId)
             }
-        } catch (e: Exception) {
-            log.warn("Failed publishing tombstone for removed userId={}", userId, e)
+
+            existsInExternal -> {
+                withContext(Dispatchers.IO) { coreUserExternalRepository.incrementNotSeenCount(listOf(objectId)) }
+                log.debug("Marked user {} as not seen (+1) in users_external due to @removed", objectId)
+            }
+
+            else -> {
+                log.debug("Removed user {} not found in DB; skipping", objectId)
+            }
         }
     }
 
-    private fun parseObjectIdOrNull(userId: String?): UUID? {
-        if (userId.isNullOrBlank()) return null
-        return try {
-            UUID.fromString(userId)
-        } catch (_: Exception) {
-            return null
-        }
-    }
+    private fun parseObjectIdOrNull(userId: String?): UUID? =
+        if (userId.isNullOrBlank()) null else runCatching { UUID.fromString(userId) }.getOrNull()
 
-    private fun isExternal(dto: EntraUser): Boolean {
-        val employeeId = dto.employeeId
-        val studentId = dto.studentId
-        return employeeId.isNullOrEmpty() && studentId.isNullOrEmpty()
+    private fun isExternal(user: User): Boolean {
+        if (configUser.enableExternalUsers != true) return false
+        val attr = EntraUser.getAttributeValue(user, configUser.externaluserattribute) ?: return false
+        val expected = configUser.externaluservalue ?: return false
+        return attr.equals(expected, ignoreCase = true)
     }
 
     companion object {
