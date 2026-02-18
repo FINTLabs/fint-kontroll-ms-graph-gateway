@@ -1,4 +1,4 @@
-package no.novari.msgraphgateway.entra
+package no.novari.msgraphgateway.kafka
 
 import no.novari.kafka.producing.ParameterizedProducerRecord
 import no.novari.kafka.producing.ParameterizedTemplate
@@ -8,6 +8,7 @@ import no.novari.kafka.topic.configuration.EntityCleanupFrequency
 import no.novari.kafka.topic.configuration.EntityTopicConfiguration
 import no.novari.kafka.topic.name.EntityTopicNameParameters
 import no.novari.kafka.topic.name.TopicNamePrefixParameters
+import no.novari.msgraphgateway.entra.EntraUserExternal
 import org.springframework.stereotype.Service
 import java.time.Duration
 

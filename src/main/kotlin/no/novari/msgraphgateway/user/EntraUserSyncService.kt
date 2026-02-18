@@ -10,8 +10,8 @@ import no.novari.msgraphgateway.config.ConfigUser
 import no.novari.msgraphgateway.entra.ChecksumService
 import no.novari.msgraphgateway.entra.EntraUser
 import no.novari.msgraphgateway.entra.EntraUserExternal
-import no.novari.msgraphgateway.entra.EntraUserExternalProducerService
-import no.novari.msgraphgateway.entra.EntraUserProducerService
+import no.novari.msgraphgateway.kafka.EntraUserExternalProducerService
+import no.novari.msgraphgateway.kafka.EntraUserProducerService
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.time.Instant

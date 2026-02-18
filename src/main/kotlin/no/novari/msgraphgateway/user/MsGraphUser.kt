@@ -1,6 +1,6 @@
 @file:Suppress("ktlint:standard:no-wildcard-imports")
 
-package no.novari.msgraphgateway
+package no.novari.msgraphgateway.user
 
 import com.microsoft.graph.serviceclient.GraphServiceClient
 import com.microsoft.graph.users.delta.DeltaGetResponse
@@ -11,9 +11,6 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import no.novari.msgraphgateway.config.ConfigUser
 import no.novari.msgraphgateway.entra.DeltaLinkStore
-import no.novari.msgraphgateway.user.CoreUserExternalRepository
-import no.novari.msgraphgateway.user.CoreUserRepository
-import no.novari.msgraphgateway.user.EntraUserSyncService
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component

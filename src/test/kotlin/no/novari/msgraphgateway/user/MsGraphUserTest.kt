@@ -8,7 +8,6 @@ import com.microsoft.kiota.ApiException
 import io.mockk.*
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
-import no.novari.msgraphgateway.MsGraphUser
 import no.novari.msgraphgateway.config.ConfigUser
 import no.novari.msgraphgateway.entra.DeltaLinkStore
 import org.junit.jupiter.api.Assertions.assertEquals
