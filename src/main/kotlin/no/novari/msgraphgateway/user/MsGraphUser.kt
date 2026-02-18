@@ -82,25 +82,40 @@ class MsGraphUser(
                     configUser.userpagingsize,
                 )
 
-                val firstPage =
-                    callGraph {
-                        val link = userDeltaLink
-                        if (!link.isNullOrBlank()) {
-                            graphServiceClient
-                                .users()
-                                .delta()
-                                .withUrl(link)
-                                .get()
-                        } else {
-                            graphServiceClient
-                                .users()
-                                .delta()
-                                .get { req ->
-                                    req.queryParameters?.apply {
-                                        select = selection
-                                        top = configUser.userpagingsize
-                                    }
+                fun buildInitialRequest(link: String?): DeltaGetResponse? =
+                    if (!link.isNullOrBlank()) {
+                        graphServiceClient
+                            .users()
+                            .delta()
+                            .withUrl(link)
+                            .get()
+                    } else {
+                        graphServiceClient
+                            .users()
+                            .delta()
+                            .get { req ->
+                                req.queryParameters?.apply {
+                                    select = selection
+                                    top = configUser.userpagingsize
                                 }
+                            }
+                    }
+
+                val firstPage =
+                    try {
+                        callGraph { buildInitialRequest(userDeltaLink) }
+                    } catch (ae: ApiException) {
+                        if (!userDeltaLink.isNullOrBlank() && ae.isInvalidDeltaState()) {
+                            log.warn("Resetting deltaLink and retrying fresh delta.")
+
+                            userDeltaLink = null
+                            withContext(Dispatchers.IO) {
+                                deltaLinkStore.createOrUpdate("users", "")
+                            }
+
+                            callGraph { buildInitialRequest(null) }
+                        } else {
+                            throw ae
                         }
                     }
 
@@ -115,6 +130,9 @@ class MsGraphUser(
             }
         }
     }
+
+    private fun ApiException.isInvalidDeltaState(): Boolean =
+        responseStatusCode == 400 || responseStatusCode == 404 || responseStatusCode == 410
 
     @Scheduled(cron = $$"${novari.scheduler.user.full-import.cron}")
     fun fullImportUsers() {
@@ -329,7 +347,7 @@ class MsGraphUser(
         try {
             withContext(Dispatchers.IO) { block() }
         } catch (ae: ApiException) {
-            log.error("Graph call failed: {}", ae.message)
+            log.error("Graph call failed with error code {}. {}", ae.responseStatusCode, ae.message)
             throw ae
         } catch (e: Exception) {
             throw if (e is RuntimeException) e else CompletionException(e)
