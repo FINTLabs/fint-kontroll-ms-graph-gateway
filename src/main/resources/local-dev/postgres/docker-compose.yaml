@@ -12,7 +12,7 @@ services:
     restart: unless-stopped
 
   pgadmin:
-    image: dpage/pgadmin4:9.11
+    image: dpage/pgadmin4:9.12
     ports:
       - 5480:80
     user: "5050"
