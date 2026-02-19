@@ -1,11 +1,14 @@
 logging:
+  pattern:
+    console: "%d{dd.MM.yyyy HH:mm:ss.SSSXXX} %highlight(%-5level) %logger{1} - %msg%n"
   level:
     com.azure: WARN
     com.microsoft: WARN
     org.apache: WARN
     org.springframework.boot.autoconfigure.flyway: INFO
     org.flywaydb: INFO
-    no.novari: INFO
+    no.novari: DEBUG
+    org.springframework.boot: DEBUG
 
 novari:
   scheduler:
