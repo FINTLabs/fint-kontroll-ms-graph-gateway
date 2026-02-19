@@ -19,8 +19,11 @@ class RestService(
 ) {
     fun getEntraUserWithGroups(userId: String): UserWithGroupsDto =
         try {
+            val selection = configUser.userAttributesDelta()
             val user =
-                graphServiceClient.users().byUserId(userId).get()
+                graphServiceClient.users().byUserId(userId).get { req ->
+                    req.queryParameters?.select = selection
+                }
                     ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "User not found: $userId")
 
             val entraUser = EntraUser(user, configUser)
