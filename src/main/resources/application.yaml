@@ -8,7 +8,7 @@ server:
 
 logging:
   pattern:
-    console: "%d{dd.MM.yyyy HH:mm:ss.SSSXXX} %highlight(%-5level) %logger{0} - %msg%n"
+    console: "%d{dd.MM.yyyy HH:mm:ss.SSSXXX} %highlight(%-9level) %logger{0} - %msg%n"
   level:
     com.azure: WARN
     com.microsoft: WARN
