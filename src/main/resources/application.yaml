@@ -53,6 +53,14 @@ ms-graph:
     stale-after-days: 21
     accepted-deviation-percent: 5
     min-not-seen-count: 7
+  group:
+    resource-group-id-attribute: extension_be2ffab7d262452b888aeb756f742377_FintKontrollRoleId
+    prefix: "-pre-"
+    suffix: "-suff-"
+    allow-group-update: false
+    allow-group-delete: false
+    unique-name-prefix:
+    group-paging-size: 999
 
 
 #placeholders
