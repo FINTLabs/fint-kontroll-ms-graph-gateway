@@ -9,6 +9,7 @@ logging:
     org.flywaydb: INFO
     no.novari: DEBUG
     org.springframework.boot: DEBUG
+    org.springframework.boot.autoconfigure: INFO
 
 novari:
   scheduler:
