@@ -68,4 +68,3 @@ ktlint {
         reporter(org.jlleitschuh.gradle.ktlint.reporter.ReporterType.HTML)
     }
 }
-
