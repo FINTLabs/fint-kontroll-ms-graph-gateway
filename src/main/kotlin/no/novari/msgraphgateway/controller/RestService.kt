@@ -57,7 +57,7 @@ class RestService(
                         .groups()
                         .byGroupId(groupId)
                         .get { requestConfig ->
-                            requestConfig.queryParameters.select = selectionCriteriaGroup
+                            requestConfig.queryParameters?.select = selectionCriteriaGroup
                         } ?: continue
 
                 val displayName = group.displayName
@@ -65,7 +65,7 @@ class RestService(
                 val hasSuffix = configGroup.suffix?.let { s -> displayName?.endsWith(s) == true } ?: false
                 val hasResourceAttr =
                     configGroup.resourceGroupIdAttribute
-                        ?.let { key -> additionalData?.containsKey(key) }
+                        ?.let { key -> additionalData.containsKey(key) }
                         ?: false
 
                 if (hasSuffix && hasResourceAttr) {

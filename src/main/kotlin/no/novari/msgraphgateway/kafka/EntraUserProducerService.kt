@@ -35,7 +35,7 @@ class EntraUserProducerService(
             EntityTopicNameParameters
                 .builder()
                 .topicNamePrefixParameters(topicNamePrefixParameters)
-                .resourceName("azure-user")
+                .resourceName("entra-user")
                 .build()
 
         entityTopicService.createOrModifyTopic(
