@@ -27,37 +27,33 @@ novari:
     application-id: fintlabs.no
     default-replicas: 1
   scheduler:
-    user:
-      delta:
-        fixed-delay-ms: 450000
-        initial-delay-ms: 1000
-      full-import:
-        cron: 0 0 12 * * *
+      user:
+          delta:
+              fixed-delay-ms: 450000
+              initial-delay-ms: 1000
+          full-import:
+              cron: 0 0 12 * * *
+fint:
+  kontroll:
+    ms-graph-gateway:
+      user:
+        #Set variable user Attributes. Case sensitive. See User Object in Graph
+        use-same-id-num-attribute: false
+        user-id-num-attribute:
+        validator-attribute:
+        student-validator:
+        employee-validator:
+        employeeidattribute:
+        studentidattribute:
+        mainorgunitidattribute:
+        mainorgunitnameattribute:
+        enableexternalusers:
+        externaluserattribute:
+        externaluservalue:
+        userpagingsize: 100
+        stale-after-days: 21
+        accepted-deviation-percent: 5
+        min-not-seen-count: 7
 
-ms-graph:
-  user:
-    #Set variable user Attributes. Case sensitive. See User Object in Graph
-    use-same-id-num-attribute: ${ms-graph.user.use-same-id-num-attribute}
-    user-id-num-attribute: ${ms-graph.user.user-id-num-attribute}
-    validator-attribute: ${ms-graph.user.validator-attribute}
-    student-validator: ${ms-graph.user.student-validator}
-    employee-validator: ${ms-graph.user.employee-validator}
-    employeeidattribute: ${ms-graph.user.employeeidattribute}
-    studentidattribute: ${ms-graph.user.studentidattribute}
-    mainorgunitidattribute: ${ms-graph.user.mainorgunitidattribute}
-    mainorgunitnameattribute: ${ms-graph.user.mainorgunitnameattribute}
-    enableexternalusers: ${ms-graph.user.enableexternalusers}
-    externaluserattribute: ${ms-graph.user.externaluservalue}
-    externaluservalue: ${ms-graph.user.externaluservalue}
-    userpagingsize: 999
-    stale-after-days: 21
-    accepted-deviation-percent: 5
-    min-not-seen-count: 7
-  group:
-    resource-group-id-attribute: extension_be2ffab7d262452b888aeb756f742377_FintKontrollRoleId
-    prefix: "-pre-"
-    suffix: "-suff-"
-    allow-group-update: false
-    allow-group-delete: false
-    unique-name-prefix:
-    group-paging-size: 999
+
+
