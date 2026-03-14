@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component
 import java.util.LinkedHashSet
 
 @Component
-@ConfigurationProperties(prefix = "ms-graph.user")
+@ConfigurationProperties(prefix = "fint.kontroll.ms-graph-gateway.user")
 class ConfigUser {
     companion object {
         @JvmStatic
