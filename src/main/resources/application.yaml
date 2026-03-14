@@ -61,13 +61,3 @@ ms-graph:
     allow-group-delete: false
     unique-name-prefix:
     group-paging-size: 999
-
-
-#placeholders
-  credentials:
-    clientid: ${ms-graph.credentials.clientid}
-    clientsecret: ${ms-graph.credentials.clientidsecret}
-    tenantid: ${ms-graph.credentials.tenantid}
-    entobjectid: ${ms-graph.credentials.entobjectid}
-
-
