@@ -1,13 +1,10 @@
 package no.novari.msgraphgateway.entra
-import com.microsoft.graph.models.OnPremisesExtensionAttributes
 import com.microsoft.graph.models.User
 import no.novari.msgraphgateway.config.ConfigUser
-import org.slf4j.LoggerFactory
 import java.io.Serializable
 
 data class EntraUser(
     val mail: String? = null,
-    val id: String? = null,
     val userPrincipalName: String? = null,
     var employeeId: String? = null,
     var studentId: String? = null,
@@ -17,7 +14,6 @@ data class EntraUser(
 ) : Serializable {
     constructor(user: User, configUser: ConfigUser) : this(
         mail = user.mail,
-        id = user.id,
         userPrincipalName = user.userPrincipalName,
         userObjectId = user.id,
         accountEnabled = user.accountEnabled,
@@ -40,8 +36,6 @@ data class EntraUser(
     }
 
     companion object {
-        private val log = LoggerFactory.getLogger(EntraUser::class.java)
-
         fun getAttributeValue(
             user: User,
             attributeName: String?,

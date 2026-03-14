@@ -1,5 +1,3 @@
-@file:Suppress("ktlint:standard:no-wildcard-imports")
-
 package no.novari.msgraphgateway.user
 
 import com.microsoft.graph.models.User
@@ -7,6 +5,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import no.novari.msgraphgateway.config.ConfigUser
+import no.novari.msgraphgateway.entra.Checksum
 import no.novari.msgraphgateway.entra.ChecksumService
 import no.novari.msgraphgateway.entra.EntraUser
 import no.novari.msgraphgateway.entra.EntraUserExternal
@@ -19,8 +18,8 @@ import java.util.*
 
 @Service
 class EntraUserSyncService(
-    private val coreUserRepository: CoreUserRepository,
-    private val coreUserExternalRepository: CoreUserExternalRepository,
+    private val userRepository: UserRepository,
+    private val userExternalRepository: UserExternalRepository,
     private val checksumService: ChecksumService,
     private val producer: EntraUserProducerService,
     private val externalProducer: EntraUserExternalProducerService,
@@ -45,7 +44,7 @@ class EntraUserSyncService(
 
     suspend fun finishFullImport(cutoff: Instant): Int =
         finishFullImportFor(
-            repo = coreUserRepository,
+            repo = userRepository,
             cutoff = cutoff,
             publishDeleted = { id -> producer.publishDeletedUser(id) },
             label = "users",
@@ -53,7 +52,7 @@ class EntraUserSyncService(
 
     suspend fun finishFullImportExternal(cutoff: Instant): Int =
         finishFullImportFor(
-            repo = coreUserExternalRepository,
+            repo = userExternalRepository,
             cutoff = cutoff,
             publishDeleted = { id -> externalProducer.publishDeletedUser(id) },
             label = "external users",
@@ -131,7 +130,7 @@ class EntraUserSyncService(
             val publishedUsers =
                 upsertAndPublish(
                     now = now,
-                    repo = coreUserRepository,
+                    repo = userRepository,
                     candidates = normals,
                     toDto = { u -> EntraUser(u, configUser) },
                     publish = { dto -> producer.publish(dto) },
@@ -142,7 +141,7 @@ class EntraUserSyncService(
             val publishedExternal =
                 upsertAndPublish(
                     now = now,
-                    repo = coreUserExternalRepository,
+                    repo = userExternalRepository,
                     candidates = externals,
                     toDto = { u -> EntraUserExternal(u, configUser) },
                     publish = { dto -> externalProducer.publish(dto) },
@@ -158,7 +157,7 @@ class EntraUserSyncService(
         repo: UserStateRepository,
         candidates: List<Pair<UUID, User>>,
         toDto: (User) -> DTO,
-        checksum: (DTO) -> ByteArray,
+        checksum: (DTO) -> Checksum,
         publish: suspend (DTO) -> Unit,
         logLabel: String,
     ): Int =
@@ -168,7 +167,7 @@ class EntraUserSyncService(
             data class Computed<DTO>(
                 val id: UUID,
                 val dto: DTO,
-                val checksum: ByteArray,
+                val checksum: Checksum,
             )
 
             val computed: List<Computed<DTO>> =
@@ -229,21 +228,21 @@ class EntraUserSyncService(
         }
 
         val existsInUsers =
-            runCatching { withContext(Dispatchers.IO) { coreUserRepository.existsById(objectId) } }
+            runCatching { withContext(Dispatchers.IO) { userRepository.existsById(objectId) } }
                 .getOrDefault(false)
 
         val existsInExternal =
-            runCatching { withContext(Dispatchers.IO) { coreUserExternalRepository.existsById(objectId) } }
+            runCatching { withContext(Dispatchers.IO) { userExternalRepository.existsById(objectId) } }
                 .getOrDefault(false)
 
         when {
             existsInUsers -> {
-                withContext(Dispatchers.IO) { coreUserRepository.incrementNotSeenCount(listOf(objectId)) }
+                withContext(Dispatchers.IO) { userRepository.incrementNotSeenCount(listOf(objectId)) }
                 log.debug("Marked user {} as not seen (+1) in users due to @removed", objectId)
             }
 
             existsInExternal -> {
-                withContext(Dispatchers.IO) { coreUserExternalRepository.incrementNotSeenCount(listOf(objectId)) }
+                withContext(Dispatchers.IO) { userExternalRepository.incrementNotSeenCount(listOf(objectId)) }
                 log.debug("Marked user {} as not seen (+1) in users_external due to @removed", objectId)
             }
 
