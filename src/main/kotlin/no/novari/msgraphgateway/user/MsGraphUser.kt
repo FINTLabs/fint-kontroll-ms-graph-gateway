@@ -173,9 +173,7 @@ class MsGraphUser(
     private suspend fun startFullImport() {
         val runStartTime = Instant.now()
         val trackingId = UUID.randomUUID().toString()
-        val notSeenIncremented =
-            ConcurrentHashMap
-                .newKeySet<UUID>()
+        val notSeenIncremented = ConcurrentHashMap.newKeySet<UUID>()
         if (!shouldContinueWithImport()) {
             return
         }

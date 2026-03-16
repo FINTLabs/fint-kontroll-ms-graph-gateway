@@ -9,8 +9,8 @@ import no.novari.msgraphgateway.entra.Checksum
 import no.novari.msgraphgateway.entra.ChecksumService
 import no.novari.msgraphgateway.entra.EntraUser
 import no.novari.msgraphgateway.entra.EntraUserExternal
-import no.novari.msgraphgateway.kafka.EntraUserExternalProducerService
-import no.novari.msgraphgateway.kafka.EntraUserProducerService
+import no.novari.msgraphgateway.kafka.UserExternalProducerService
+import no.novari.msgraphgateway.kafka.UserProducerService
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.time.Instant
@@ -21,8 +21,8 @@ class EntraUserSyncService(
     private val userRepository: UserRepository,
     private val userExternalRepository: UserExternalRepository,
     private val checksumService: ChecksumService,
-    private val producer: EntraUserProducerService,
-    private val externalProducer: EntraUserExternalProducerService,
+    private val producer: UserProducerService,
+    private val externalProducer: UserExternalProducerService,
     private val configUser: ConfigUser,
 ) {
     private val batchSize = 1000
