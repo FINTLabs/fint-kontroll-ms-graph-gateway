@@ -8,17 +8,17 @@ import no.novari.kafka.topic.configuration.EntityCleanupFrequency
 import no.novari.kafka.topic.configuration.EntityTopicConfiguration
 import no.novari.kafka.topic.name.EntityTopicNameParameters
 import no.novari.kafka.topic.name.TopicNamePrefixParameters
-import no.novari.msgraphgateway.entra.EntraUserExternal
+import no.novari.msgraphgateway.entra.EntraUser
 import org.springframework.stereotype.Service
 import java.time.Duration
 
 @Service
-class EntraUserExternalProducerService(
+class UserProducerService(
     private val parameterizedTemplateFactory: ParameterizedTemplateFactory,
     entityTopicService: EntityTopicService,
 ) {
-    private val entraUserExternalTemplate: ParameterizedTemplate<EntraUserExternal> by lazy {
-        parameterizedTemplateFactory.createTemplate(EntraUserExternal::class.java)
+    private val entraUserTemplate: ParameterizedTemplate<EntraUser> by lazy {
+        parameterizedTemplateFactory.createTemplate(EntraUser::class.java)
     }
 
     private val entityTopicNameParameters: EntityTopicNameParameters
@@ -35,7 +35,7 @@ class EntraUserExternalProducerService(
             EntityTopicNameParameters
                 .builder()
                 .topicNamePrefixParameters(topicNamePrefixParameters)
-                .resourceName("entra-user-external")
+                .resourceName("graph-user")
                 .build()
 
         entityTopicService.createOrModifyTopic(
@@ -50,21 +50,21 @@ class EntraUserExternalProducerService(
         )
     }
 
-    fun publish(entraUserExternal: EntraUserExternal) {
-        entraUserExternalTemplate.send(
+    fun publish(entraUser: EntraUser) {
+        entraUserTemplate.send(
             ParameterizedProducerRecord
-                .builder<EntraUserExternal>()
+                .builder<EntraUser>()
                 .topicNameParameters(entityTopicNameParameters)
-                .key(entraUserExternal.userObjectId)
-                .value(entraUserExternal)
+                .key(entraUser.userObjectId)
+                .value(entraUser)
                 .build(),
         )
     }
 
     fun publishDeletedUser(userId: String) {
-        entraUserExternalTemplate.send(
+        entraUserTemplate.send(
             ParameterizedProducerRecord
-                .builder<EntraUserExternal>()
+                .builder<EntraUser>()
                 .topicNameParameters(entityTopicNameParameters)
                 .key(userId)
                 .value(null)

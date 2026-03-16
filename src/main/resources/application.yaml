@@ -33,27 +33,25 @@ novari:
               initial-delay-ms: 1000
           full-import:
               cron: 0 0 12 * * *
-fint:
-  kontroll:
-    ms-graph-gateway:
-      user:
-        #Set variable user Attributes. Case sensitive. See User Object in Graph
-        use-same-id-num-attribute: false
-        user-id-num-attribute:
-        validator-attribute:
-        student-validator:
-        employee-validator:
-        employeeidattribute:
-        studentidattribute:
-        mainorgunitidattribute:
-        mainorgunitnameattribute:
-        enableexternalusers:
-        externaluserattribute:
-        externaluservalue:
-        userpagingsize: 100
-        stale-after-days: 21
-        accepted-deviation-percent: 5
-        min-not-seen-count: 7
+ms-graph:
+  user:
+    #Set variable user Attributes. Case sensitive. See User Object in Graph
+    use-same-id-num-attribute: false
+    user-id-num-attribute:
+    validator-attribute:
+    student-validator:
+    employee-validator:
+    employeeidattribute:
+    studentidattribute:
+    mainorgunitidattribute:
+    mainorgunitnameattribute:
+    enableexternalusers:
+    externaluserattribute:
+    externaluservalue:
+    userpagingsize: 100
+    stale-after-days: 21
+    accepted-deviation-percent: 5
+    min-not-seen-count: 7
 
 
 
