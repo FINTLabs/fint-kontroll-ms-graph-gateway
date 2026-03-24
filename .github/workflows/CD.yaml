@@ -1,12 +1,12 @@
 name: CD
 
 on:
-  push:
-    branches:
-      - main
-    tags:
-      - 'v[1-9][0-9]*.[0-9]+.[0-9]+'
-      - '!**rc*'
+#  push:
+#    branches:
+#      - main
+#    tags:
+#      - 'v[1-9][0-9]*.[0-9]+.[0-9]+'
+#      - '!**rc*'
   workflow_dispatch:
 
 env:
