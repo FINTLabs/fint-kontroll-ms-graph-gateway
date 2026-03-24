@@ -1,13 +1,13 @@
 name: CD
 
-#on:
+on:
 #  push:
 #    branches:
 #      - main
 #    tags:
 #      - 'v[1-9][0-9]*.[0-9]+.[0-9]+'
 #      - '!**rc*'
-#  workflow_dispatch:
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
