@@ -1,17 +1,22 @@
 logging:
+  pattern:
+    console: "%d{dd.MM.yyyy HH:mm:ss.SSSXXX} %highlight(%-5level) %logger{1} - %msg%n"
   level:
     com.azure: WARN
-    com.microsoft: WARN
+    com.microsoft: TRACE
     org.apache: WARN
     org.springframework.boot.autoconfigure.flyway: INFO
     org.flywaydb: INFO
-    no.novari: INFO
+    no.novari: DEBUG
+    no.novari.msgraphgateway.user.MsGraphUser: TRACE
+    org.springframework.boot: DEBUG
+    org.springframework.boot.autoconfigure: INFO
 
-novari:
-  scheduler:
-    user:
-      delta:
-        fixed-delay-ms: 20000
-        initial-delay-ms: 1000
-      full-import:
-        cron: "*/33 * * * * *"
+#novari:
+#  scheduler:
+#    user:
+#      delta:
+#        fixed-delay-ms: 20000
+#        initial-delay-ms: 1000
+#      full-import:
+#        cron: "*/33 * * * * *"

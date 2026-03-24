@@ -85,15 +85,17 @@ class MsGraphUser(
                             .users()
                             .delta()
                             .withUrl(link)
-                            .get()
+                            .get { req ->
+                                req.headers.add("Prefer", "return=minimal")
+                            }
                     } else {
                         graphServiceClient
                             .users()
                             .delta()
                             .get { req ->
+                                req.headers.add("Prefer", "return=minimal")
                                 req.queryParameters?.apply {
                                     select = selection
-                                    top = configUser.userpagingsize
                                 }
                             }
                     }
@@ -187,8 +189,8 @@ class MsGraphUser(
                     .users()
                     .delta()
                     .get { req ->
+                        req.headers.add("Prefer", "return=minimal")
                         req.queryParameters?.select = selection
-                        req.queryParameters?.top = configUser.userpagingsize
                     }
             }
 
@@ -237,9 +239,10 @@ class MsGraphUser(
             graphServiceClient
                 .users()
                 .count()
-                .get { requestConfiguration ->
-                    requestConfiguration.headers.add("ConsistencyLevel", "eventual")
-                    requestConfiguration.queryParameters?.filter = "userType eq 'Member'"
+                .get { req ->
+                    req.headers.add("Prefer", "return=minimal")
+                    req.headers.add("ConsistencyLevel", "eventual")
+                    req.queryParameters?.filter = "userType eq 'Member'"
                 } ?: 0
         val totalCountDb = coreUserRepository.getCount()
         if (totalCountDb != 0 && Math.abs(totalCountSource - totalCountDb).div(totalCountDb) <
@@ -290,6 +293,7 @@ class MsGraphUser(
                 totalPublished += publishedThisPage
             } else {
                 log.debug("Users page {} fetched=0", pageNo)
+                log.trace(current.toString());
             }
 
             last = current
@@ -305,8 +309,7 @@ class MsGraphUser(
                     current =
                         callGraph {
                             graphServiceClient
-                                .users()
-                                .delta()
+                                .users().delta()
                                 .withUrl(next)
                                 .get { req -> req.headers.add("Prefer", "return=minimal") }
                         }
