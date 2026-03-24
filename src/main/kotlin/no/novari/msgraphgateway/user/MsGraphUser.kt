@@ -85,15 +85,12 @@ class MsGraphUser(
                             .users()
                             .delta()
                             .withUrl(link)
-                            .get { req ->
-                                req.headers.add("Prefer", "return=minimal")
-                            }
+                            .get()
                     } else {
                         graphServiceClient
                             .users()
                             .delta()
                             .get { req ->
-                                req.headers.add("Prefer", "return=minimal")
                                 req.queryParameters?.apply {
                                     select = selection
                                 }
@@ -189,7 +186,6 @@ class MsGraphUser(
                     .users()
                     .delta()
                     .get { req ->
-                        req.headers.add("Prefer", "return=minimal")
                         req.queryParameters?.select = selection
                     }
             }
@@ -240,7 +236,6 @@ class MsGraphUser(
                 .users()
                 .count()
                 .get { req ->
-                    req.headers.add("Prefer", "return=minimal")
                     req.headers.add("ConsistencyLevel", "eventual")
                     req.queryParameters?.filter = "userType eq 'Member'"
                 } ?: 0
@@ -293,7 +288,7 @@ class MsGraphUser(
                 totalPublished += publishedThisPage
             } else {
                 log.debug("Users page {} fetched=0", pageNo)
-                log.trace(current.toString());
+                log.trace(current.toString())
             }
 
             last = current
@@ -309,9 +304,10 @@ class MsGraphUser(
                     current =
                         callGraph {
                             graphServiceClient
-                                .users().delta()
+                                .users()
+                                .delta()
                                 .withUrl(next)
-                                .get { req -> req.headers.add("Prefer", "return=minimal") }
+                                .get()
                         }
                 }
             }
