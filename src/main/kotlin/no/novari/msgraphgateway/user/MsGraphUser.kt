@@ -74,8 +74,9 @@ class MsGraphUser(
                 val selection = configUser.userAttributesDelta()
                 val deltaPresent = !userDeltaLink.isNullOrBlank()
 
-                log.info(
-                    "Starting users delta pull from Microsoft Graph. TrackingId {} (deltaLinkPresent={}, pageSize={})",
+                log.info("Starting users delta pull from Microsoft Graph")
+                log.debug(
+                    "TrackingId {} (deltaLinkPresent={}, pageSize={})",
                     trackingId,
                     deltaPresent,
                     configUser.userpagingsize,
@@ -182,7 +183,8 @@ class MsGraphUser(
         }
         val selection = configUser.userAttributesDelta()
 
-        log.info(
+        log.info("Starting full import of users from Microsoft Graph")
+        log.debug(
             "Starting full import of users from Microsoft Graph. TrackingID {} (pageSize={})",
             trackingId,
             configUser.userpagingsize,
