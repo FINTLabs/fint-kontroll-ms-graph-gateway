@@ -69,12 +69,14 @@ class MsGraphUser(
             }
 
             val startTime = System.currentTimeMillis()
+            val trackingId = UUID.randomUUID().toString()
             try {
                 val selection = configUser.userAttributesDelta()
                 val deltaPresent = !userDeltaLink.isNullOrBlank()
 
                 log.info(
-                    "Starting users delta pull from Microsoft Graph (deltaLinkPresent={}, pageSize={})",
+                    "Starting users delta pull from Microsoft Graph. TrackingId {} (deltaLinkPresent={}, pageSize={})",
+                    trackingId,
                     deltaPresent,
                     configUser.userpagingsize,
                 )
@@ -85,12 +87,15 @@ class MsGraphUser(
                             .users()
                             .delta()
                             .withUrl(link)
-                            .get()
+                            .get { req ->
+                                req.headers.add("client-request-id", trackingId)
+                            }
                     } else {
                         graphServiceClient
                             .users()
                             .delta()
                             .get { req ->
+                                req.headers.add("client-request-id", trackingId)
                                 req.queryParameters?.apply {
                                     select = selection
                                 }
@@ -141,6 +146,7 @@ class MsGraphUser(
             }
 
             val startTime = System.currentTimeMillis()
+
             try {
                 startFullImport()
             } finally {
@@ -167,6 +173,7 @@ class MsGraphUser(
 
     private suspend fun startFullImport() {
         val runStartTime = Instant.now()
+        val trackingId = UUID.randomUUID().toString()
         val notSeenIncremented =
             ConcurrentHashMap
                 .newKeySet<UUID>()
@@ -176,7 +183,8 @@ class MsGraphUser(
         val selection = configUser.userAttributesDelta()
 
         log.info(
-            "Starting full import of users from Microsoft Graph (pageSize={})",
+            "Starting full import of users from Microsoft Graph. TrackingID {} (pageSize={})",
+            trackingId,
             configUser.userpagingsize,
         )
 
@@ -186,6 +194,7 @@ class MsGraphUser(
                     .users()
                     .delta()
                     .get { req ->
+                        req.headers.add("client-request-id", trackingId)
                         req.queryParameters?.select = selection
                     }
             }
