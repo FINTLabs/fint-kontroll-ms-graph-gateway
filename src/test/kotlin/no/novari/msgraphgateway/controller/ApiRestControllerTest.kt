@@ -9,7 +9,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 
 class ApiRestControllerTest {
-    @Test
+    /*@Test
     fun getUserWithGroups() {
     }
 
@@ -24,7 +24,7 @@ class ApiRestControllerTest {
 
     @Test
     fun triggerUserDeltaSync() {
-    }
+    }*/
 
     @BeforeEach
     fun setUp() {

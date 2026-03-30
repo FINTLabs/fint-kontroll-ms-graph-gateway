@@ -11,6 +11,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import no.novari.msgraphgateway.config.ConfigUser
@@ -218,31 +219,34 @@ class MsGraphUserTest {
         finishFirstRun.complete(Unit)
     }
 
-    /*@Test
+    @Test
     fun pullAllUsersDelta_doesNotStartSecondRunWhileFirstIsRunning() = runTest {
-        val started = CompletableDeferred<Unit>()
-        val finishFirstRun = CompletableDeferred<Unit>()
-        var importCount = 0
+
+        val firstRunStarted = CompletableDeferred<Unit>()
+        val allowFirstRunToFinish = CompletableDeferred<Unit>()
 
         val msGraphUser = createMsGraphUser()
 
-        coEvery { msGraphUser["startFullImport"]() } coAnswers {
-            importCount++
-            if (importCount == 1) {
-                started.complete(Unit)
-                finishFirstRun.await()
-            }
+        val firstPage = mockk<DeltaGetResponse>(relaxed = true)
+
+        coEvery { deltaRb.get(any()) } coAnswers {
+            firstRunStarted.complete(Unit)
+            allowFirstRunToFinish.await()
+            firstPage
         }
 
         msGraphUser.pullAllUsersDelta()
-        started.await()
+        firstRunStarted.await()
 
         msGraphUser.pullAllUsersDelta()
+        advanceUntilIdle()
 
-        assertEquals(1, importCount)
+        coVerify(exactly = 1) { deltaRb.get(any()) }
 
-        finishFirstRun.complete(Unit)
-    }*/
+        allowFirstRunToFinish.complete(Unit)
+        advanceUntilIdle()
+
+    }
 
     private suspend fun invokePrivateSuspendStartFullImport(sut: Any) {
         val kClass = sut::class
