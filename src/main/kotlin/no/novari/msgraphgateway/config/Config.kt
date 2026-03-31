@@ -58,6 +58,15 @@ open class Config {
                 .readTimeout(timeout, TimeUnit.MINUTES)
                 .writeTimeout(timeout, TimeUnit.MINUTES)
                 .retryOnConnectionFailure(true)
+                .addInterceptor { chain ->
+                    val request = chain.request()
+                    val response = chain.proceed(request)
+
+                    val myHeaderValue = response.header("request-id")
+                    log.debug("HTTP request-id: $myHeaderValue")
+
+                    response
+                }
                 .build()
 
         return GraphServiceClient(
