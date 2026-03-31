@@ -33,6 +33,12 @@ novari:
         initial-delay-ms: 1000
       full-import:
         cron: 0 0 12 * * *
+    device:
+      delta:
+        fixed-delay-ms: 500000
+        initial-delay-ms: 1000
+      full-import:
+        cron: 0 0 12 * * *
 
 ms-graph:
   user:
@@ -61,6 +67,9 @@ ms-graph:
     allow-group-delete: false
     unique-name-prefix:
     group-paging-size: 999
+  device:
+    device-id-attribute: extension_be2ffab7d262452b888aeb756f742377_FintKontrollDeviceId
+    device-paging-size: 999
 
 
 #placeholders

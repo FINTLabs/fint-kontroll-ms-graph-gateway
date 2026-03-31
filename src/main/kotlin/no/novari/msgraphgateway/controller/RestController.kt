@@ -1,5 +1,6 @@
 package no.novari.msgraphgateway.controller
 
+import no.novari.msgraphgateway.device.MsGraphDevice
 import no.novari.msgraphgateway.user.MsGraphUser
 import org.springframework.http.ResponseEntity
 import org.springframework.scheduling.Trigger
@@ -13,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController
 class ApiRestController(
     private val restService: RestService,
     private val msGraphUser: MsGraphUser,
+    private val msGraphDevice: MsGraphDevice,
 ) {
     @GetMapping("/users/{objectId}")
     fun getUserWithGroups(
@@ -48,6 +50,26 @@ class ApiRestController(
         return ResponseEntity.ok(
             mapOf(
                 "message" to "Users delta sync triggered",
+            ),
+        )
+    }
+
+    @GetMapping("/triggers/devicefullsync")
+    fun triggerDeviceFullSync(): ResponseEntity<Any> {
+        msGraphDevice.fullImportDevices()
+        return ResponseEntity.ok(
+            mapOf(
+                "message" to "Devices Full sync triggered",
+            ),
+        )
+    }
+
+    @GetMapping("/triggers/devicedeltasync")
+    fun triggerDeviceDeltaSync(): ResponseEntity<Any> {
+        msGraphDevice.pullAllDevicesDelta()
+        return ResponseEntity.ok(
+            mapOf(
+                "message" to "Devices delta sync triggered",
             ),
         )
     }

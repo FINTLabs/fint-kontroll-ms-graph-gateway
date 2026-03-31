@@ -75,7 +75,7 @@ class MsGraphDevice(
                 log.info(
                     "Starting devices delta pull from Microsoft Graph (deltaLinkPresent={}, pageSize={})",
                     deltaPresent,
-                    configDevice.devicepagingsize,
+                    configDevice.devicePagingSize,
                 )
 
                 fun buildInitialRequest(link: String?): DeltaGetResponse? =
@@ -176,7 +176,7 @@ class MsGraphDevice(
 
         log.info(
             "Starting full import of devices from Microsoft Graph (pageSize={})",
-            configDevice.devicepagingsize,
+            configDevice.devicePagingSize,
         )
 
         val firstPage =
@@ -185,6 +185,7 @@ class MsGraphDevice(
                     .devices()
                     .delta()
                     .get { req ->
+                        req.headers.add("ConsistencyLevel", "eventual")
                         req.queryParameters?.select = selection
                     }
             }
@@ -223,7 +224,7 @@ class MsGraphDevice(
     }
 
     private fun shouldContinueWithImport(): Boolean {
-        val totalCountSource = graphServiceClient.devices().count().get() ?: 0
+        val totalCountSource = graphServiceClient.devices().count().get { req -> req.headers.add("ConsistencyLevel", "eventual") } ?: 0
         val totalCountDb = coreDeviceRepository.getCount()
 
         if (totalCountDb == 0) {
