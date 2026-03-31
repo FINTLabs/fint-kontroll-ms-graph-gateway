@@ -62,8 +62,23 @@ open class Config {
                     val request = chain.request()
                     val response = chain.proceed(request)
 
-                    val myHeaderValue = response.header("request-id")
-                    log.debug("HTTP request-id: $myHeaderValue")
+                    if (request.header("client-request-id") != response.header("client-request-id")) {
+                        log.error("client-request-id differs from the returned client-request-id")
+                    }
+
+                    val logMap = mapOf(
+                        "type" to "http_response",
+                        "method" to request.method,
+                        "url" to request.url.newBuilder()
+                            .query(null)
+                            .build()
+                            .toString(),
+                        "client-request-id" to request.header("client-request-id"),
+                        "request-id" to response.header("request-id"),
+                        "date" to response.header("Date")
+                    )
+
+                    log.debug(logMap.toString())
 
                     response
                 }
