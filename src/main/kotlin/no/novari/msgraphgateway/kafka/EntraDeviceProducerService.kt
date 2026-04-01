@@ -35,7 +35,7 @@ class EntraDeviceProducerService(
             EntityTopicNameParameters
                 .builder()
                 .topicNamePrefixParameters(topicNamePrefixParameters)
-                .resourceName("entra-device")
+                .resourceName("graph-device")
                 .build()
 
         entityTopicService.createOrModifyTopic(
