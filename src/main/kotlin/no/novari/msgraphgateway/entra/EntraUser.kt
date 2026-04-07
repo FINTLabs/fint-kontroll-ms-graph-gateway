@@ -10,7 +10,6 @@ data class EntraUser(
     var studentId: String? = null,
     val userObjectId: String? = null,
     val accountEnabled: Boolean? = null,
-    val validatorAttribute: String? = null,
 ) : Serializable {
     constructor(user: User, configUser: ConfigUser) : this(
         mail = user.mail,
@@ -51,5 +50,14 @@ data class EntraUser(
                 user.backingStore.get(attributeName)
             }
         }
+    }
+    fun toPayload(): EntraUserPayload {
+        return EntraUserPayload(
+            mail = mail,
+            userPrincipalName = userPrincipalName,
+            employeeId = employeeId,
+            studentId = studentId,
+            accountEnabled = accountEnabled,
+        )
     }
 }
