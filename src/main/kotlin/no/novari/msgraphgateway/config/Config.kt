@@ -59,6 +59,30 @@ open class Config {
                 .readTimeout(timeout, TimeUnit.MINUTES)
                 .writeTimeout(timeout, TimeUnit.MINUTES)
                 .retryOnConnectionFailure(true)
+                .addInterceptor { chain ->
+                    val request = chain.request()
+                    val response = chain.proceed(request)
+
+                    if (request.header("client-request-id") != response.header("client-request-id")) {
+                        log.error("client-request-id differs from the returned client-request-id")
+                    }
+
+                    val logMap = mapOf(
+                        "type" to "http_response",
+                        "method" to request.method,
+                        "url" to request.url.newBuilder()
+                            .query(null)
+                            .build()
+                            .toString(),
+                        "client-request-id" to request.header("client-request-id"),
+                        "request-id" to response.header("request-id"),
+                        "date" to response.header("Date")
+                    )
+
+                    log.debug(logMap.toString())
+
+                    response
+                }
                 .build()
 
         return GraphServiceClient(
