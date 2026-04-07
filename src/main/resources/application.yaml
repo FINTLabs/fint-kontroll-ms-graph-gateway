@@ -48,7 +48,7 @@ ms-graph:
     enableexternalusers:
     externaluserattribute:
     externaluservalue:
-    userpagingsize: 100
+    userpagingsize: 999
     stale-after-days: 21
     accepted-deviation-percent: 5
     min-not-seen-count: 7
