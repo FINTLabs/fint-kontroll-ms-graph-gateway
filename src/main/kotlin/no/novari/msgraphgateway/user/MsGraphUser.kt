@@ -1,5 +1,3 @@
-@file:Suppress("ktlint:standard:no-wildcard-imports")
-
 package no.novari.msgraphgateway.user
 
 import com.microsoft.graph.serviceclient.GraphServiceClient
@@ -27,8 +25,8 @@ class MsGraphUser(
     private val graphServiceClient: GraphServiceClient,
     private val entraUserSyncService: EntraUserSyncService,
     private val deltaLinkStore: DeltaLinkStore,
-    private val coreUserRepository: CoreUserRepository,
-    private val coreUserExternalRepository: CoreUserExternalRepository,
+    private val userRepository: UserRepository,
+    private val userExternalRepository: UserExternalRepository,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val runMutex = Mutex()
@@ -175,9 +173,7 @@ class MsGraphUser(
     private suspend fun startFullImport() {
         val runStartTime = Instant.now()
         val trackingId = UUID.randomUUID().toString()
-        val notSeenIncremented =
-            ConcurrentHashMap
-                .newKeySet<UUID>()
+        val notSeenIncremented = ConcurrentHashMap.newKeySet<UUID>()
         if (!shouldContinueWithImport()) {
             return
         }
@@ -222,22 +218,22 @@ class MsGraphUser(
     ) {
         val staleUserIds =
             withContext(Dispatchers.IO) {
-                coreUserRepository.findStaleObjectIds(startTime)
+                userRepository.findStaleObjectIds(startTime)
             }.filter { notSeenIncremented.add(it) } // add() returnerer false hvis allerede der
 
         log.info("Marking {} stale users as not seen", staleUserIds.size)
         withContext(Dispatchers.IO) {
-            coreUserRepository.incrementNotSeenCount(staleUserIds)
+            userRepository.incrementNotSeenCount(staleUserIds)
         }
 
         val staleExternalIds =
             withContext(Dispatchers.IO) {
-                coreUserExternalRepository.findStaleObjectIds(startTime)
+                userExternalRepository.findStaleObjectIds(startTime)
             }.filter { notSeenIncremented.add(it) }
 
         log.info("Marking {} stale external users as not seen", staleExternalIds.size)
         withContext(Dispatchers.IO) {
-            coreUserExternalRepository.incrementNotSeenCount(staleExternalIds)
+            userExternalRepository.incrementNotSeenCount(staleExternalIds)
         }
     }
 
@@ -250,8 +246,9 @@ class MsGraphUser(
                     req.headers.add("ConsistencyLevel", "eventual")
                     req.queryParameters?.filter = "userType eq 'Member'"
                 } ?: 0
-        val totalCountDb = coreUserRepository.getCount()
-        if (totalCountDb != 0 && Math.abs(totalCountSource - totalCountDb).div(totalCountDb) <
+        val totalCountDb = userRepository.getCount()
+        if (totalCountDb != 0 &&
+            Math.abs(totalCountSource - totalCountDb).div(totalCountDb) <
             Math.divideExact(
                 configUser.acceptedDeviationPercent ?: 0,
                 100,

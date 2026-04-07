@@ -3,62 +3,46 @@ package no.novari.msgraphgateway.entra
 import com.fasterxml.jackson.annotation.JsonInclude
 import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.MapperFeature
-import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.SerializationFeature
+import com.fasterxml.jackson.databind.json.JsonMapper
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
-import java.security.NoSuchAlgorithmException
 
-// FULLY AI generated so will need to be checked and updated,
-// for now just using for testing purposes
+@JvmInline
+value class Checksum(
+    val bytes: ByteArray,
+)
+
 @Service
 class ChecksumService {
-    private val mapper: ObjectMapper =
-        ObjectMapper()
-            // Stable output:
+    private val mapper =
+        JsonMapper
+            .builder()
             .configure(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY, true)
             .configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true)
-            // Avoid nulls affecting output (optional; pick one rule and keep it forever)
-            .setSerializationInclusion(JsonInclude.Include.NON_NULL)
+            .serializationInclusion(JsonInclude.Include.NON_NULL)
+            .build()
 
-    private val sha256: MessageDigest =
-        try {
-            MessageDigest.getInstance("SHA-256")
-        } catch (e: NoSuchAlgorithmException) {
-            throw IllegalStateException("SHA-256 not available", e)
-        }
-
-    fun checksum(dto: Any?): ByteArray {
-        if (dto == null) {
-            return ByteArray(0)
-        }
+    fun checksum(dto: Any?): Checksum {
+        if (dto == null) return Checksum(ByteArray(0))
 
         val canonicalBytes = toCanonicalJsonBytes(dto)
-        return sha256Digest(canonicalBytes)
+        return Checksum(MessageDigest.getInstance("SHA-256").digest(canonicalBytes))
     }
 
     private fun toCanonicalJsonBytes(dto: Any): ByteArray =
         try {
-            val json = mapper.writeValueAsString(dto)
-            json.toByteArray(StandardCharsets.UTF_8)
+            mapper.writeValueAsBytes(dto)
         } catch (e: JsonProcessingException) {
-            val fallback = dto::class.java.name
             log.warn(
                 "Failed to serialize {} for checksum, using fallback",
                 dto::class.java.simpleName,
                 e,
             )
-            fallback.toByteArray(StandardCharsets.UTF_8)
+            dto::class.java.name.toByteArray(StandardCharsets.UTF_8)
         }
-
-    private fun sha256Digest(input: ByteArray): ByteArray {
-        synchronized(sha256) {
-            sha256.reset()
-            return sha256.digest(input)
-        }
-    }
 
     companion object {
         private val log = LoggerFactory.getLogger(ChecksumService::class.java)

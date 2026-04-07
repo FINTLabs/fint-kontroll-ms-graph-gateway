@@ -1,14 +1,13 @@
-@file:Suppress("ktlint:standard:no-wildcard-imports")
-
 package no.novari.msgraphgateway.user
 
+import no.novari.msgraphgateway.entra.Checksum
 import java.time.Instant
 import java.util.*
 
 interface UserStateRepository {
     data class UpsertRow(
         val objectId: UUID,
-        val checksum: ByteArray,
+        val checksum: Checksum,
         val lastSeenAt: Instant,
     )
 
