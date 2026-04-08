@@ -37,8 +37,9 @@ open class Config {
             ClientSecretCredentialBuilder()
                 .clientId(requireNotNull(credentials.clientid) { "ms-graph.credentials.clientid is required" })
                 .tenantId(requireNotNull(credentials.tenantguid) { "ms-graph.credentials.tenantguid is required" })
-                .clientSecret(requireNotNull(credentials.clientsecret) { "ms-graph.credentials.clientsecret is required" })
-                .build()
+                .clientSecret(
+                    requireNotNull(credentials.clientsecret) { "ms-graph.credentials.clientsecret is required" },
+                ).build()
 
         val dispatcher =
             Dispatcher().apply {

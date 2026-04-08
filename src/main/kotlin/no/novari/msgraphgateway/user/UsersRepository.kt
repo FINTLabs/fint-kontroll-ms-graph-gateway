@@ -1,5 +1,3 @@
-@file:Suppress("ktlint:standard:no-wildcard-imports")
-
 package no.novari.msgraphgateway.user
 
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource
@@ -11,16 +9,16 @@ import java.time.ZoneOffset
 import java.util.*
 
 @Repository
-class CoreUserRepository(
+class UserRepository(
     jdbc: NamedParameterJdbcTemplate,
-) : CoreUsersRepository(jdbc, table = "users")
+) : UsersRepository(jdbc, table = "users")
 
 @Repository
-class CoreUserExternalRepository(
+class UserExternalRepository(
     jdbc: NamedParameterJdbcTemplate,
-) : CoreUsersRepository(jdbc, table = "users_external")
+) : UsersRepository(jdbc, table = "users_external")
 
-open class CoreUsersRepository(
+open class UsersRepository(
     private val jdbc: NamedParameterJdbcTemplate,
     table: String,
 ) : UserStateRepository {

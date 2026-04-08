@@ -36,4 +36,16 @@ data class EntraUserExternal(
             }
         }
     }
+    fun toPayload(): EntraUserExternalPayload {
+        return EntraUserExternalPayload(
+            userPrincipalName = userPrincipalName,
+            accountEnabled = accountEnabled,
+            firstName = firstName,
+            lastName = lastName,
+            email = email,
+            userName = userName,
+            mainOrganisationUnitName = mainOrganisationUnitName,
+            mainOrganisationUnitId = mainOrganisationUnitId,
+        )
+    }
 }

@@ -9,16 +9,17 @@ import no.novari.kafka.topic.configuration.EntityTopicConfiguration
 import no.novari.kafka.topic.name.EntityTopicNameParameters
 import no.novari.kafka.topic.name.TopicNamePrefixParameters
 import no.novari.msgraphgateway.entra.EntraUser
+import no.novari.msgraphgateway.entra.EntraUserPayload
 import org.springframework.stereotype.Service
 import java.time.Duration
 
 @Service
-class EntraUserProducerService(
+class UserProducerService(
     private val parameterizedTemplateFactory: ParameterizedTemplateFactory,
     entityTopicService: EntityTopicService,
 ) {
-    private val entraUserTemplate: ParameterizedTemplate<EntraUser> by lazy {
-        parameterizedTemplateFactory.createTemplate(EntraUser::class.java)
+    private val entraUserTemplate: ParameterizedTemplate<EntraUserPayload> by lazy {
+        parameterizedTemplateFactory.createTemplate(EntraUserPayload::class.java)
     }
 
     private val entityTopicNameParameters: EntityTopicNameParameters
@@ -35,7 +36,7 @@ class EntraUserProducerService(
             EntityTopicNameParameters
                 .builder()
                 .topicNamePrefixParameters(topicNamePrefixParameters)
-                .resourceName("azure-user")
+                .resourceName("graph-user")
                 .build()
 
         entityTopicService.createOrModifyTopic(
@@ -53,10 +54,10 @@ class EntraUserProducerService(
     fun publish(entraUser: EntraUser) {
         entraUserTemplate.send(
             ParameterizedProducerRecord
-                .builder<EntraUser>()
+                .builder<EntraUserPayload>()
                 .topicNameParameters(entityTopicNameParameters)
                 .key(entraUser.userObjectId)
-                .value(entraUser)
+                .value(entraUser.toPayload())
                 .build(),
         )
     }
@@ -64,7 +65,7 @@ class EntraUserProducerService(
     fun publishDeletedUser(userId: String) {
         entraUserTemplate.send(
             ParameterizedProducerRecord
-                .builder<EntraUser>()
+                .builder<EntraUserPayload>()
                 .topicNameParameters(entityTopicNameParameters)
                 .key(userId)
                 .value(null)

@@ -8,7 +8,7 @@ import org.springframework.scheduling.annotation.EnableScheduling
 @EnableScheduling
 @ConfigurationPropertiesScan
 @SpringBootApplication(
-    scanBasePackages = ["no.novari"]
+    scanBasePackages = ["no.novari"],
 )
 class Application
 

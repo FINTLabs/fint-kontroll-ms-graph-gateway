@@ -1,5 +1,3 @@
-@file:Suppress("ktlint:standard:no-wildcard-imports")
-
 package no.novari.msgraphgateway.user
 
 import com.microsoft.graph.serviceclient.GraphServiceClient
@@ -56,7 +54,13 @@ class MsGraphUserTest {
             every { invalid.responseStatusCode } returns 400
             every { invalid.message } returns "Badly formed token"
             every { deltaRb.withUrl("BAD_LINK") } returns deltaRb
-            every { deltaRb.get() } throws invalid
+
+            val firstPage = mockk<DeltaGetResponse>(relaxed = true)
+            every { firstPage.value } returns emptyList()
+            every { firstPage.odataNextLink } returns null
+            every { firstPage.odataDeltaLink } returns "new_deltalink"
+
+            every { deltaRb.get(any()) } throws invalid andThen firstPage
 
             val sut =
                 MsGraphUser(
@@ -64,8 +68,8 @@ class MsGraphUserTest {
                     graphServiceClient = graphServiceClient,
                     entraUserSyncService = mockk(relaxed = true),
                     deltaLinkStore = deltaLinkStore,
-                    coreUserRepository = mockk(relaxed = true),
-                    coreUserExternalRepository = mockk(relaxed = true),
+                    userRepository = mockk(relaxed = true),
+                    userExternalRepository = mockk(relaxed = true),
                 )
 
             setPrivateField(sut, "userDeltaLink", "BAD_LINK")
@@ -73,9 +77,9 @@ class MsGraphUserTest {
             sut.pullAllUsersDelta()
 
             verify(timeout = 2_000, exactly = 1) { deltaRb.withUrl("BAD_LINK") }
-            verify(timeout = 2_000, exactly = 1) { deltaRb.get() }
-            verify(timeout = 2_000, exactly = 1) { deltaRb.get(any()) }
-            verify(timeout = 2_000, atLeast = 1) { deltaLinkStore.createOrUpdate("users", "") }
+            verify(timeout = 2_000, exactly = 2) { deltaRb.get(any()) }
+            verify(timeout = 2_000, exactly = 1) { deltaLinkStore.createOrUpdate("users", "") }
+            verify(timeout = 2_000, exactly = 1) { deltaLinkStore.createOrUpdate("users", "new_deltalink") }
         }
 
     @Test
@@ -112,8 +116,8 @@ class MsGraphUserTest {
                     graphServiceClient = graphServiceClient,
                     entraUserSyncService = mockk(relaxed = true),
                     deltaLinkStore = deltaLinkStore,
-                    coreUserRepository = mockk(relaxed = true),
-                    coreUserExternalRepository = mockk(relaxed = true),
+                    userRepository = mockk(relaxed = true),
+                    userExternalRepository = mockk(relaxed = true),
                 )
 
             setPrivateField(sut, "userDeltaLink", "old_bad_deltalink")
@@ -141,10 +145,10 @@ class MsGraphUserTest {
 
             val deltaLinkStore = mockk<DeltaLinkStore>(relaxed = true)
             val entraUserSyncService = mockk<EntraUserSyncService>(relaxed = true)
-            val coreUserRepository = mockk<CoreUserRepository>(relaxed = true)
-            val coreUserExternalRepository = mockk<CoreUserExternalRepository>(relaxed = true)
+            val userRepository = mockk<UserRepository>(relaxed = true)
+            val userExternalRepository = mockk<UserExternalRepository>(relaxed = true)
 
-            every { coreUserRepository.getCount() } returns 0
+            every { userRepository.getCount() } returns 0
 
             val graphServiceClient = mockk<GraphServiceClient>(relaxed = true)
             val usersRb = mockk<com.microsoft.graph.users.UsersRequestBuilder>(relaxed = true)
@@ -167,10 +171,10 @@ class MsGraphUserTest {
             coEvery { entraUserSyncService.finishFullImport(any()) } returns 0
             coEvery { entraUserSyncService.finishFullImportExternal(any()) } returns 0
 
-            coEvery { coreUserRepository.findStaleObjectIds(any()) } returns emptyList()
-            coEvery { coreUserExternalRepository.findStaleObjectIds(any()) } returns emptyList()
-            coEvery { coreUserRepository.incrementNotSeenCount(any()) } returns Unit
-            coEvery { coreUserExternalRepository.incrementNotSeenCount(any()) } returns Unit
+            coEvery { userRepository.findStaleObjectIds(any()) } returns emptyList()
+            coEvery { userExternalRepository.findStaleObjectIds(any()) } returns emptyList()
+            coEvery { userRepository.incrementNotSeenCount(any()) } returns Unit
+            coEvery { userExternalRepository.incrementNotSeenCount(any()) } returns Unit
 
             val sut =
                 MsGraphUser(
@@ -178,8 +182,8 @@ class MsGraphUserTest {
                     graphServiceClient = graphServiceClient,
                     entraUserSyncService = entraUserSyncService,
                     deltaLinkStore = deltaLinkStore,
-                    coreUserRepository = coreUserRepository,
-                    coreUserExternalRepository = coreUserExternalRepository,
+                    userRepository = userRepository,
+                    userExternalRepository = userExternalRepository,
                 )
 
             invokePrivateSuspendStartFullImport(sut)

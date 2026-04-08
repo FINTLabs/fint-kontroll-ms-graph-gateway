@@ -24,7 +24,7 @@ data class EntraGroup(
             configGroup: ConfigGroup,
         ): Long? {
             val key = configGroup.resourceGroupIdAttribute ?: return null
-            val raw = group.additionalData?.get(key) ?: return null
+            val raw = group.additionalData[key] ?: return null
 
             return raw.toString().toLongOrNull() ?: run {
                 log.warn("Error converting value {} to long", raw)

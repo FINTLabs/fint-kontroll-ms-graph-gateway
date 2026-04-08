@@ -3,7 +3,6 @@ package no.novari.msgraphgateway.controller
 import no.novari.msgraphgateway.device.MsGraphDevice
 import no.novari.msgraphgateway.user.MsGraphUser
 import org.springframework.http.ResponseEntity
-import org.springframework.scheduling.Trigger
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestMapping
@@ -11,7 +10,7 @@ import org.springframework.web.bind.annotation.RestController
 
 @RestController
 @RequestMapping("/api")
-class ApiRestController(
+class RestController(
     private val restService: RestService,
     private val msGraphUser: MsGraphUser,
     private val msGraphDevice: MsGraphDevice,
