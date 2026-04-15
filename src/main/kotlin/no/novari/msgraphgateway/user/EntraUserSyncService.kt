@@ -33,11 +33,12 @@ class EntraUserSyncService(
     suspend fun processPage(
         users: List<User>?,
         notSeenIncremented: MutableSet<UUID>,
+        republishAll: Boolean,
     ): Int {
         if (users.isNullOrEmpty()) return 0
         var publishedTotal = 0
         for (batch in users.chunked(batchSize)) {
-            publishedTotal += processBatch(batch, notSeenIncremented)
+            publishedTotal += processBatch(batch, notSeenIncremented, republishAll)
         }
         return publishedTotal
     }
@@ -96,6 +97,7 @@ class EntraUserSyncService(
     private suspend fun processBatch(
         batch: List<User>,
         notSeenIncremented: MutableSet<UUID>,
+        republishAll: Boolean,
     ): Int =
         coroutineScope {
             val now = Instant.now()
@@ -116,7 +118,8 @@ class EntraUserSyncService(
                     .mapNotNull { u ->
                         val id = parseObjectIdOrNull(u.id) ?: return@mapNotNull null
                         id to u
-                    }.toList()
+                    }.distinctBy { it.first }
+                    .toList()
 
             if (candidates.isEmpty()) return@coroutineScope 0
 
@@ -126,33 +129,56 @@ class EntraUserSyncService(
             for ((id, u) in candidates) {
                 if (isExternal(u)) externals += id to u else normals += id to u
             }
+            if (republishAll) {
+                val publishedUsers =
+                    upsertAndPublishAll(
+                        now = now,
+                        repo = userRepository,
+                        candidates = normals,
+                        toDto = { u -> EntraUser(u, configUser) },
+                        publish = { dto -> producer.publish(dto) },
+                        checksum = { dto -> checksumService.checksum(dto) },
+                        logLabel = "users",
+                    )
 
-            val publishedUsers =
-                upsertAndPublish(
-                    now = now,
-                    repo = userRepository,
-                    candidates = normals,
-                    toDto = { u -> EntraUser(u, configUser) },
-                    publish = { dto -> producer.publish(dto) },
-                    checksum = { dto -> checksumService.checksum(dto) },
-                    logLabel = "users",
-                )
+                val publishedExternal =
+                    upsertAndPublishAll(
+                        now = now,
+                        repo = userExternalRepository,
+                        candidates = externals,
+                        toDto = { u -> EntraUserExternal(u, configUser) },
+                        publish = { dto -> externalProducer.publish(dto) },
+                        checksum = { dto -> checksumService.checksum(dto) },
+                        logLabel = "external users",
+                    )
+                publishedUsers + publishedExternal
+            } else {
+                val publishedUsers =
+                    upsertAndPublishChanged(
+                        now = now,
+                        repo = userRepository,
+                        candidates = normals,
+                        toDto = { u -> EntraUser(u, configUser) },
+                        publish = { dto -> producer.publish(dto) },
+                        checksum = { dto -> checksumService.checksum(dto) },
+                        logLabel = "users",
+                    )
 
-            val publishedExternal =
-                upsertAndPublish(
-                    now = now,
-                    repo = userExternalRepository,
-                    candidates = externals,
-                    toDto = { u -> EntraUserExternal(u, configUser) },
-                    publish = { dto -> externalProducer.publish(dto) },
-                    checksum = { dto -> checksumService.checksum(dto) },
-                    logLabel = "external users",
-                )
-
-            publishedUsers + publishedExternal
+                val publishedExternal =
+                    upsertAndPublishChanged(
+                        now = now,
+                        repo = userExternalRepository,
+                        candidates = externals,
+                        toDto = { u -> EntraUserExternal(u, configUser) },
+                        publish = { dto -> externalProducer.publish(dto) },
+                        checksum = { dto -> checksumService.checksum(dto) },
+                        logLabel = "external users",
+                    )
+                publishedUsers + publishedExternal
+            }
         }
 
-    private suspend fun <DTO : Any> upsertAndPublish(
+    private suspend fun <DTO : Any> upsertAndPublishChanged(
         now: Instant,
         repo: UserStateRepository,
         candidates: List<Pair<UUID, User>>,
@@ -164,35 +190,18 @@ class EntraUserSyncService(
         coroutineScope {
             if (candidates.isEmpty()) return@coroutineScope 0
 
-            data class Computed<DTO>(
-                val id: UUID,
-                val dto: DTO,
-                val checksum: Checksum,
-            )
-
-            val computed: List<Computed<DTO>> =
-                candidates
-                    .map { (id, u) ->
-                        async(Dispatchers.Default) {
-                            val dto = toDto(u)
-                            checksumPermits.withPermit {
-                                Computed(id, dto, checksum(dto))
-                            }
-                        }
-                    }.awaitAll()
-
-            val rows = ArrayList<UserStateRepository.UpsertRow>(computed.size)
-            val dtoById = HashMap<UUID, DTO>(computed.size)
-
-            for (c in computed) {
-                rows += UserStateRepository.UpsertRow(c.id, c.checksum, now)
-                dtoById[c.id] = c.dto
-            }
+            val prepared =
+                prepareRowsAndDtos(
+                    now = now,
+                    candidates = candidates,
+                    toDto = toDto,
+                    checksum = checksum,
+                )
 
             val changedIds: Set<UUID> =
                 dbBatchPermits.withPermit {
                     withContext(Dispatchers.IO) {
-                        repo.batchUpsertReturningChanged(rows)
+                        repo.batchUpsertReturningChanged(prepared.rows)
                     }
                 }
 
@@ -202,13 +211,53 @@ class EntraUserSyncService(
 
             val jobs =
                 changedIds.mapNotNull { id ->
-                    val dto = dtoById[id] ?: return@mapNotNull null
+                    val dto = prepared.dtoById[id] ?: return@mapNotNull null
                     async(Dispatchers.IO) {
                         runCatching {
                             kafkaPermits.withPermit {
                                 publish(dto)
                             }
                         }.onFailure { log.warn("Failed publishing {} {}", logLabel, id, it) }
+                    }
+                }
+
+            jobs.awaitAll().count { it.isSuccess }
+        }
+
+    private suspend fun <DTO : Any> upsertAndPublishAll(
+        now: Instant,
+        repo: UserStateRepository,
+        candidates: List<Pair<UUID, User>>,
+        toDto: (User) -> DTO,
+        checksum: (DTO) -> Checksum,
+        publish: suspend (DTO) -> Unit,
+        logLabel: String,
+    ): Int =
+        coroutineScope {
+            if (candidates.isEmpty()) return@coroutineScope 0
+
+            val prepared =
+                prepareRowsAndDtos(
+                    now = now,
+                    candidates = candidates,
+                    toDto = toDto,
+                    checksum = checksum,
+                )
+
+            dbBatchPermits.withPermit {
+                withContext(Dispatchers.IO) {
+                    repo.batchUpsert(prepared.rows)
+                }
+            }
+            val jobs =
+                prepared.rows.mapNotNull { row ->
+                    val dto = prepared.dtoById[row.objectId] ?: return@mapNotNull null
+                    async(Dispatchers.IO) {
+                        runCatching {
+                            kafkaPermits.withPermit {
+                                publish(dto)
+                            }
+                        }.onFailure { log.warn("Failed publishing {} {}", logLabel, row.objectId, it) }
                     }
                 }
 
@@ -251,6 +300,46 @@ class EntraUserSyncService(
             }
         }
     }
+
+    private suspend fun <DTO : Any> prepareRowsAndDtos(
+        now: Instant,
+        candidates: List<Pair<UUID, User>>,
+        toDto: (User) -> DTO,
+        checksum: (DTO) -> Checksum,
+    ): PreparedBatch<DTO> =
+        coroutineScope {
+            data class Computed<DTO>(
+                val id: UUID,
+                val dto: DTO,
+                val checksum: Checksum,
+            )
+
+            val computed: List<Computed<DTO>> =
+                candidates
+                    .map { (id, u) ->
+                        async(Dispatchers.Default) {
+                            val dto = toDto(u)
+                            checksumPermits.withPermit {
+                                Computed(id, dto, checksum(dto))
+                            }
+                        }
+                    }.awaitAll()
+
+            val rows = ArrayList<UserStateRepository.UpsertRow>(computed.size)
+            val dtoById = HashMap<UUID, DTO>(computed.size)
+
+            for (c in computed) {
+                rows += UserStateRepository.UpsertRow(c.id, c.checksum, now)
+                dtoById[c.id] = c.dto
+            }
+
+            PreparedBatch(rows = rows, dtoById = dtoById)
+        }
+
+    private data class PreparedBatch<DTO : Any>(
+        val rows: List<UserStateRepository.UpsertRow>,
+        val dtoById: Map<UUID, DTO>,
+    )
 
     private fun parseObjectIdOrNull(userId: String?): UUID? =
         if (userId.isNullOrBlank()) null else runCatching { UUID.fromString(userId) }.getOrNull()

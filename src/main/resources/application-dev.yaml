@@ -1,22 +1,37 @@
 logging:
-  pattern:
-    console: "%d{dd.MM.yyyy HH:mm:ss.SSSXXX} %highlight(%-5level) %logger{1} - %msg%n"
-  level:
-    com.azure: WARN
-    com.microsoft: TRACE
-    org.apache: WARN
-    org.springframework.boot.autoconfigure.flyway: INFO
-    org.flywaydb: INFO
-    no.novari: DEBUG
-    no.novari.msgraphgateway.user.MsGraphUser: TRACE
-    org.springframework.boot: DEBUG
-    org.springframework.boot.autoconfigure: INFO
+    pattern:
+        console: "%d{dd.MM.yyyy HH:mm:ss.SSSXXX} %highlight(%-5level) %logger{1} - %msg%n"
+    level:
+        com.azure: WARN
+        com.microsoft: TRACE
+        org.apache: WARN
+        org.springframework.boot.autoconfigure.flyway: INFO
+        org.flywaydb: INFO
+        no.novari: DEBUG
+        no.novari.msgraphgateway.user.MsGraphUser: TRACE
+        org.springframework.boot: DEBUG
+        org.springframework.boot.autoconfigure: INFO
+spring:
+    datasource:
+        driver-class-name: org.postgresql.Driver
+        username: postgres
+        url: jdbc:postgresql://localhost:5432/postgres
+        password: postgres
+        hikari:
+            schema: ms-graph-gateway
+novari:
+    scheduler:
+        user:
+            delta:
+                fixed-delay-ms: 1200000
+                initial-delay-ms: 10000
+            full-import:
+                cron: "0 15 3 * * *"
 
-#novari:
-#  scheduler:
-#    user:
-#      delta:
-#        fixed-delay-ms: 20000
-#        initial-delay-ms: 1000
-#      full-import:
-#        cron: "*/33 * * * * *"
+fint:
+    kontroll:
+        opa:
+            url: http://localhost:8181/v1/data/accessmanagement
+        authorization:
+            authorized-role: 'https://role-catalog.vigoiks.no/vigo/kontroll/user'
+            authorized-org-id: 'vigo.no'

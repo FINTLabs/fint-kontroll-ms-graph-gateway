@@ -12,7 +12,7 @@ import org.springframework.stereotype.Service
 import org.springframework.web.server.ResponseStatusException
 
 @Service
-class RestService(
+class GroupService(
     private val configUser: ConfigUser,
     private val configGroup: ConfigGroup,
     private val graphServiceClient: GraphServiceClient,
@@ -86,6 +86,6 @@ class RestService(
         }
 
     companion object {
-        private val log = LoggerFactory.getLogger(RestService::class.java)
+        private val log = LoggerFactory.getLogger(GroupService::class.java)
     }
 }

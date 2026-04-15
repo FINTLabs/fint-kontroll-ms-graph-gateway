@@ -1,57 +1,64 @@
+fint:
+    application-id: fint-kontroll-ms-graph-gateway
 spring:
-  profiles:
-    include:
-      - kafka
-      - db
+    profiles:
+        include:
+            - kafka
+            - db
+    security:
+        oauth2:
+            resourceserver:
+                jwt:
+                    issuer-uri: https://idp.felleskomponent.no/nidp/oauth/nam
 server:
-  port: 8080
+    port: 8080
 
 logging:
-  pattern:
-    console: "%d{dd.MM.yyyy HH:mm:ss.SSSXXX} %highlight(%-9level) %logger{0} - %msg%n"
-  level:
-    com.azure: WARN
-    com.microsoft: WARN
-    org.apache: WARN
-    org.springframework.boot.autoconfigure.flyway: INFO
-    org.flywaydb: INFO
-    no.novari: INFO
+    pattern:
+        console: "%d{dd.MM.yyyy HH:mm:ss.SSSXXX} %highlight(%-9level) %logger{0} - %msg%n"
+    level:
+        com.azure: WARN
+        com.microsoft: WARN
+        org.apache: WARN
+        org.springframework.boot.autoconfigure.flyway: INFO
+        org.flywaydb: INFO
+        no.novari: INFO
 
 novari:
-  application-id: fint-kontroll-ms-graph-gateway
-  org-id: fintlabs.no
-  kafka:
-    topic:
-      org-id: fintlabs-no
-      domain-context: kontroll
-    application-id: fintlabs.no
-    default-replicas: 1
-  scheduler:
-      user:
-          delta:
-              fixed-delay-ms: 450000
-              initial-delay-ms: 1000
-          full-import:
-              cron: 0 0 12 * * *
+    application-id: fint-kontroll-ms-graph-gateway
+    org-id: fintlabs.no
+    kafka:
+        topic:
+            org-id: fintlabs-no
+            domain-context: kontroll
+        application-id: fintlabs.no
+        default-replicas: 1
+    scheduler:
+        user:
+            delta:
+                fixed-delay-ms: 1200000
+                initial-delay-ms: 10000
+            full-import:
+                cron: 0 15 12 * * *
 ms-graph:
-  user:
-    #Set variable user Attributes. Case sensitive. See User Object in Graph
-    use-same-id-num-attribute: false
-    user-id-num-attribute:
-    validator-attribute:
-    student-validator:
-    employee-validator:
-    employeeidattribute:
-    studentidattribute:
-    mainorgunitidattribute:
-    mainorgunitnameattribute:
-    enableexternalusers:
-    externaluserattribute:
-    externaluservalue:
-    userpagingsize: 999
-    stale-after-days: 21
-    accepted-deviation-percent: 5
-    min-not-seen-count: 7
+    user:
+        #Set variable user Attributes. Case sensitive. See User Object in Graph
+        use-same-id-num-attribute: false
+        user-id-num-attribute: employeeId
+        validator-attribute: employeeType
+        student-validator: elev
+        employee-validator: tilsett
+        employeeidattribute:
+        studentidattribute:
+        mainorgunitidattribute:
+        mainorgunitnameattribute:
+        enableexternalusers: false
+        externaluserattribute:
+        externaluservalue: ----
+        userpagingsize: 100
+        stale-after-days: 21
+        accepted-deviation-percent: 5
+        min-not-seen-count: 7
 
 
 

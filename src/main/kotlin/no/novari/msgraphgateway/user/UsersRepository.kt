@@ -102,6 +102,26 @@ open class UsersRepository(
         WHERE i.old_checksum IS DISTINCT FROM i.checksum
         """.trimIndent()
 
+    private val batchUpsertSql =
+        """
+       WITH input AS (
+  SELECT *
+  FROM unnest(
+    :objectIds::uuid[],
+    :checksums::bytea[],
+    :lastSeenAts::timestamptz[]
+  ) AS t(object_id, checksum, last_seen_at)
+)
+INSERT INTO $table (object_id, checksum, last_seen_at, not_seen_count)
+SELECT object_id, checksum, last_seen_at, 0
+FROM input
+ON CONFLICT (object_id) DO UPDATE
+SET
+  checksum = EXCLUDED.checksum,
+  last_seen_at = EXCLUDED.last_seen_at,
+  not_seen_count = 0
+        """.trimIndent()
+
     override fun findStaleObjectIds(cutoff: Instant): List<UUID> {
         val params = MapSqlParameterSource().addValue("cutoff", cutoff.atOffset(ZoneOffset.UTC))
         return jdbc.query(findStaleObjectsByIdSql, params) { rs, _ ->
@@ -175,5 +195,23 @@ open class UsersRepository(
     override fun existsById(objectId: UUID): Boolean {
         val params = MapSqlParameterSource().addValue("objectId", objectId)
         return jdbc.queryForObject(existsByIdSql, params, Boolean::class.java) ?: false
+    }
+
+    override fun batchUpsert(rows: List<UserStateRepository.UpsertRow>) {
+        if (rows.isEmpty()) return
+
+        val objectIds = rows.map { it.objectId }.toTypedArray()
+        val checksums = rows.map { it.checksum }.toTypedArray()
+        val lastSeenAts = rows.map { it.lastSeenAt }.toTypedArray()
+
+        jdbc.jdbcTemplate.execute { conn: Connection ->
+            val params =
+                MapSqlParameterSource()
+                    .addValue("objectIds", conn.createArrayOf("uuid", objectIds))
+                    .addValue("checksums", conn.createArrayOf("bytea", checksums))
+                    .addValue("lastSeenAts", conn.createArrayOf("timestamptz", lastSeenAts))
+
+            jdbc.update(batchUpsertSql, params)
+        }
     }
 }

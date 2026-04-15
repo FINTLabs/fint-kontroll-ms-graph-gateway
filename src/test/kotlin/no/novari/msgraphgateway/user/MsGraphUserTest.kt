@@ -1,12 +1,20 @@
 package no.novari.msgraphgateway.user
 
 import com.microsoft.graph.serviceclient.GraphServiceClient
+import com.microsoft.graph.users.UsersRequestBuilder
+import com.microsoft.graph.users.count.CountRequestBuilder
 import com.microsoft.graph.users.delta.DeltaGetResponse
+import com.microsoft.graph.users.delta.DeltaRequestBuilder
 import com.microsoft.kiota.ApiException
-import io.mockk.*
+import io.mockk.clearAllMocks
+import io.mockk.coEvery
+import io.mockk.coVerify
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.spyk
+import io.mockk.verify
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import no.novari.msgraphgateway.config.ConfigUser
 import no.novari.msgraphgateway.entra.DeltaLinkStore
@@ -14,193 +22,71 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import kotlin.reflect.full.callSuspend
-import kotlin.reflect.full.declaredFunctions
-import kotlin.reflect.jvm.isAccessible
 
 class MsGraphUserTest {
     private lateinit var configUser: ConfigUser
     private lateinit var deltaLinkStore: DeltaLinkStore
     private lateinit var graphServiceClient: GraphServiceClient
-    private lateinit var usersRb: com.microsoft.graph.users.UsersRequestBuilder
-    private lateinit var deltaRb: com.microsoft.graph.users.delta.DeltaRequestBuilder
+    private lateinit var usersRb: UsersRequestBuilder
+    private lateinit var deltaRb: DeltaRequestBuilder
+    private lateinit var countRb: CountRequestBuilder
     private lateinit var entraUserSyncService: EntraUserSyncService
     private lateinit var userRepository: UserRepository
     private lateinit var userExternalRepository: UserExternalRepository
 
     @Test
-    fun invalidDeltaLinkDoesNotCallFreshDelta() =
-        runBlocking {
-            val configUser = mockk<ConfigUser>()
-            every { configUser.userpagingsize } returns 50
-            every { configUser.userAttributesDelta() } returns arrayOf("id")
-
-            val deltaLinkStore = mockk<DeltaLinkStore>(relaxed = true)
-            val graphServiceClient = mockk<GraphServiceClient>(relaxed = true)
-            val usersRb = mockk<com.microsoft.graph.users.UsersRequestBuilder>(relaxed = true)
-            val deltaRb = mockk<com.microsoft.graph.users.delta.DeltaRequestBuilder>(relaxed = true)
-
-            every { graphServiceClient.users() } returns usersRb
-            every { usersRb.delta() } returns deltaRb
-
-            val invalid = mockk<ApiException>(relaxed = true)
-            every { invalid.responseStatusCode } returns 400
-            every { invalid.message } returns "Badly formed token"
-            every { deltaRb.withUrl("BAD_LINK") } returns deltaRb
-
-            val firstPage = mockk<DeltaGetResponse>(relaxed = true)
-            every { firstPage.value } returns emptyList()
-            every { firstPage.odataNextLink } returns null
-            every { firstPage.odataDeltaLink } returns "new_deltalink"
-
-            every { deltaRb.get(any()) } throws invalid andThen firstPage
-
-            val sut =
-                MsGraphUser(
-                    configUser = configUser,
-                    graphServiceClient = graphServiceClient,
-                    entraUserSyncService = mockk(relaxed = true),
-                    deltaLinkStore = deltaLinkStore,
-                    userRepository = mockk(relaxed = true),
-                    userExternalRepository = mockk(relaxed = true),
-                )
-
-            setPrivateField(sut, "userDeltaLink", "BAD_LINK")
-
-            sut.pullAllUsersDelta()
-
-            verify(timeout = 2_000, exactly = 1) { deltaRb.withUrl("BAD_LINK") }
-            verify(timeout = 2_000, exactly = 2) { deltaRb.get(any()) }
-            verify(timeout = 2_000, exactly = 1) { deltaLinkStore.createOrUpdate("users", "") }
-            verify(timeout = 2_000, exactly = 1) { deltaLinkStore.createOrUpdate("users", "new_deltalink") }
-        }
-
-    @Test
     fun invalidDeltaLinkResetsAndStoresNewDeltaLink() =
         runBlocking {
-            val configUser = mockk<ConfigUser>()
-            every { configUser.userpagingsize } returns 50
-            every { configUser.userAttributesDelta() } returns arrayOf("id")
-
-            val deltaLinkStore = mockk<DeltaLinkStore>(relaxed = true)
-            val graphServiceClient = mockk<GraphServiceClient>(relaxed = true)
-            val usersRb = mockk<com.microsoft.graph.users.UsersRequestBuilder>(relaxed = true)
-            val deltaRb = mockk<com.microsoft.graph.users.delta.DeltaRequestBuilder>(relaxed = true)
-
-            every { graphServiceClient.users() } returns usersRb
-            every { usersRb.delta() } returns deltaRb
-
             val invalid = mockk<ApiException>(relaxed = true)
             every { invalid.responseStatusCode } returns 400
             every { invalid.message } returns "Badly formed token"
             every { deltaRb.withUrl("old_bad_deltalink") } returns deltaRb
-            every { deltaRb.get() } throws invalid
 
-            val firstPage = mockk<DeltaGetResponse>(relaxed = true)
-            every { firstPage.value } returns emptyList()
-            every { firstPage.odataNextLink } returns null
-            every { firstPage.odataDeltaLink } returns "new_deltalink"
+            val firstPage = mockDeltaPage(deltaLink = "new_deltalink")
+            every { deltaRb.get(any()) } throws invalid andThen firstPage
 
-            every { deltaRb.get(any()) } returns firstPage
-
-            val sut =
-                MsGraphUser(
-                    configUser = configUser,
-                    graphServiceClient = graphServiceClient,
-                    entraUserSyncService = mockk(relaxed = true),
-                    deltaLinkStore = deltaLinkStore,
-                    userRepository = mockk(relaxed = true),
-                    userExternalRepository = mockk(relaxed = true),
-                )
-
+            val sut = createMsGraphUser()
             setPrivateField(sut, "userDeltaLink", "old_bad_deltalink")
 
             sut.pullAllUsersDelta()
 
-            verify(timeout = 2_000) { deltaRb.get(any()) }
-            verify(exactly = 1) { deltaRb.withUrl("old_bad_deltalink") }
-            verify(exactly = 1) { deltaRb.get(any()) }
-            verify(timeout = 2_000, exactly = 1) {
-                deltaLinkStore.createOrUpdate("users", "new_deltalink")
-            }
-
-            val newValue = getPrivateField(sut, "userDeltaLink")
-            assertEquals("new_deltalink", newValue)
+            verify(timeout = 2_000, exactly = 1) { deltaRb.withUrl("old_bad_deltalink") }
+            verify(timeout = 2_000, exactly = 2) { deltaRb.get(any()) }
+            verify(timeout = 2_000, exactly = 1) { deltaLinkStore.createOrUpdate("users", "") }
+            verify(timeout = 2_000, exactly = 1) { deltaLinkStore.createOrUpdate("users", "new_deltalink") }
+            assertEquals("new_deltalink", getPrivateField(sut, "userDeltaLink"))
         }
 
     @Test
     fun fullImportStoresNewDeltaLink() =
         runTest {
-            val configUser = mockk<ConfigUser>()
-            every { configUser.userpagingsize } returns 50
             every { configUser.userAttributesDelta() } returns arrayOf("id", "displayName")
             every { configUser.staleAfterDays } returns 30
             every { configUser.acceptedDeviationPercent } returns null
-
-            val deltaLinkStore = mockk<DeltaLinkStore>(relaxed = true)
-            val entraUserSyncService = mockk<EntraUserSyncService>(relaxed = true)
-            val userRepository = mockk<UserRepository>(relaxed = true)
-            val userExternalRepository = mockk<UserExternalRepository>(relaxed = true)
-
             every { userRepository.getCount() } returns 0
-
-            val graphServiceClient = mockk<GraphServiceClient>(relaxed = true)
-            val usersRb = mockk<com.microsoft.graph.users.UsersRequestBuilder>(relaxed = true)
-            val deltaRb = mockk<com.microsoft.graph.users.delta.DeltaRequestBuilder>(relaxed = true)
-            val countRb = mockk<com.microsoft.graph.users.count.CountRequestBuilder>(relaxed = true)
-
-            every { graphServiceClient.users() } returns usersRb
-            every { usersRb.delta() } returns deltaRb
-            every { usersRb.count() } returns countRb
             every { countRb.get(any()) } returns 100
+            every { deltaRb.get(any()) } returns mockDeltaPage(deltaLink = "new_deltalink")
 
-            val firstPage = mockk<DeltaGetResponse>(relaxed = true)
-            every { firstPage.value } returns emptyList()
-            every { firstPage.odataNextLink } returns null
-            every { firstPage.odataDeltaLink } returns "new_deltalink"
+            val sut = createMsGraphUser()
 
-            every { deltaRb.get(any()) } returns firstPage
-
-            coEvery { entraUserSyncService.processPage(any(), any()) } returns 0
-            coEvery { entraUserSyncService.finishFullImport(any()) } returns 0
-            coEvery { entraUserSyncService.finishFullImportExternal(any()) } returns 0
-
-            coEvery { userRepository.findStaleObjectIds(any()) } returns emptyList()
-            coEvery { userExternalRepository.findStaleObjectIds(any()) } returns emptyList()
-            coEvery { userRepository.incrementNotSeenCount(any()) } returns Unit
-            coEvery { userExternalRepository.incrementNotSeenCount(any()) } returns Unit
-
-            val sut =
-                MsGraphUser(
-                    configUser = configUser,
-                    graphServiceClient = graphServiceClient,
-                    entraUserSyncService = entraUserSyncService,
-                    deltaLinkStore = deltaLinkStore,
-                    userRepository = userRepository,
-                    userExternalRepository = userExternalRepository,
-                )
-
-            invokePrivateSuspendStartFullImport(sut)
+            sut.startFullImport()
 
             verify(exactly = 1) { deltaRb.get(any()) }
-            coVerify(exactly = 1) { deltaLinkStore.createOrUpdate("users", "new_deltalink") }
+            verify(exactly = 1) { deltaLinkStore.createOrUpdate("users", "new_deltalink") }
             coVerify(exactly = 1) { entraUserSyncService.finishFullImport(any()) }
             coVerify(exactly = 1) { entraUserSyncService.finishFullImportExternal(any()) }
-
-            val current = getPrivateField(sut, "userDeltaLink") as String?
-            assertEquals("new_deltalink", current)
+            assertEquals("new_deltalink", getPrivateField(sut, "userDeltaLink"))
         }
 
     @Test
-    fun fullImportUsers_doesNotStartSecondRunWhileFirstIsRunning() =
-        runTest {
+    fun requestFullImportDoesNotStartSecondRunWhileFirstIsRunning(): Unit =
+        runBlocking {
             val started = CompletableDeferred<Unit>()
             val finishFirstRun = CompletableDeferred<Unit>()
             var importCount = 0
 
-            val msGraphUser = createMsGraphUser()
-
-            coEvery { msGraphUser["startFullImport"]() } coAnswers {
+            val msGraphUser = spyk(createMsGraphUser())
+            coEvery { msGraphUser.startFullImport(any()) } coAnswers {
                 importCount++
                 if (importCount == 1) {
                     started.complete(Unit)
@@ -208,58 +94,89 @@ class MsGraphUserTest {
                 }
             }
 
-            msGraphUser.fullImportUsers()
+            msGraphUser.requestFullImport(false)
             started.await()
 
-            msGraphUser.fullImportUsers()
+            msGraphUser.requestFullImport(false)
 
-            assertEquals(1, importCount)
+            coVerify(timeout = 500, exactly = 1) { msGraphUser.startFullImport(false) }
 
             finishFirstRun.complete(Unit)
         }
 
     @Test
-    fun pullAllUsersDelta_doesNotStartSecondRunWhileFirstIsRunning() =
-        runTest {
+    fun requestFullImportAfterDeltaRunPreservesRepublishFlag() =
+        runBlocking {
+            val deltaStarted = CompletableDeferred<Unit>()
+            val releaseDelta = CompletableDeferred<Unit>()
+
+            val firstPage = mockDeltaPage(deltaLink = "new_deltalink")
+            every { deltaRb.get(any()) } answers {
+                deltaStarted.complete(Unit)
+                runBlocking { releaseDelta.await() }
+                firstPage
+            }
+
+            val msGraphUser = spyk(createMsGraphUser())
+            coEvery { msGraphUser.startFullImport(any()) } returns Unit
+
+            msGraphUser.pullAllUsersDelta()
+            deltaStarted.await()
+
+            msGraphUser.requestFullImport(true)
+            releaseDelta.complete(Unit)
+
+            coVerify(timeout = 2_000, exactly = 1) { msGraphUser.startFullImport(true) }
+        }
+
+    @Test
+    fun pullAllUsersDeltaDoesNotStartSecondRunWhileFirstIsRunning(): Unit =
+        runBlocking {
             val firstRunStarted = CompletableDeferred<Unit>()
             val allowFirstRunToFinish = CompletableDeferred<Unit>()
 
-            val msGraphUser = createMsGraphUser()
-
-            val firstPage = mockk<DeltaGetResponse>(relaxed = true)
-
-            coEvery { deltaRb.get(any()) } coAnswers {
+            every { deltaRb.get(any()) } answers {
                 firstRunStarted.complete(Unit)
-                allowFirstRunToFinish.await()
-                firstPage
+                runBlocking { allowFirstRunToFinish.await() }
+                mockDeltaPage(deltaLink = "new_deltalink")
             }
+
+            val msGraphUser = createMsGraphUser()
 
             msGraphUser.pullAllUsersDelta()
             firstRunStarted.await()
 
             msGraphUser.pullAllUsersDelta()
-            advanceUntilIdle()
 
-            coVerify(exactly = 1) { deltaRb.get(any()) }
+            verify(timeout = 500, exactly = 1) { deltaRb.get(any()) }
 
             allowFirstRunToFinish.complete(Unit)
-            advanceUntilIdle()
         }
 
-    private suspend fun invokePrivateSuspendStartFullImport(sut: Any) {
-        val kClass = sut::class
-        val fn = kClass.declaredFunctions.first { it.name == "startFullImport" }
-        fn.isAccessible = true
-        fn.callSuspend(sut)
-    }
+    private fun createMsGraphUser() =
+        MsGraphUser(
+            configUser = configUser,
+            graphServiceClient = graphServiceClient,
+            entraUserSyncService = entraUserSyncService,
+            deltaLinkStore = deltaLinkStore,
+            userRepository = userRepository,
+            userExternalRepository = userExternalRepository,
+        )
+
+    private fun mockDeltaPage(deltaLink: String): DeltaGetResponse =
+        mockk(relaxed = true) {
+            every { value } returns emptyList()
+            every { odataNextLink } returns null
+            every { odataDeltaLink } returns deltaLink
+        }
 
     private fun getPrivateField(
         target: Any,
         fieldName: String,
     ): Any? {
-        val f = target.javaClass.getDeclaredField(fieldName)
-        f.isAccessible = true
-        return f.get(target)
+        val field = target.javaClass.getDeclaredField(fieldName)
+        field.isAccessible = true
+        return field.get(target)
     }
 
     private fun setPrivateField(
@@ -267,23 +184,10 @@ class MsGraphUserTest {
         fieldName: String,
         value: Any?,
     ) {
-        val f = target.javaClass.getDeclaredField(fieldName)
-        f.isAccessible = true
-        f.set(target, value)
+        val field = target.javaClass.getDeclaredField(fieldName)
+        field.isAccessible = true
+        field.set(target, value)
     }
-
-    private fun createMsGraphUser() =
-        spyk(
-            MsGraphUser(
-                configUser = configUser,
-                graphServiceClient = graphServiceClient,
-                entraUserSyncService = entraUserSyncService,
-                deltaLinkStore = deltaLinkStore,
-                userRepository = userRepository,
-                userExternalRepository = userExternalRepository,
-            ),
-            recordPrivateCalls = true,
-        )
 
     @BeforeEach
     fun beforeEach() {
@@ -292,24 +196,26 @@ class MsGraphUserTest {
         graphServiceClient = mockk(relaxed = true)
         usersRb = mockk(relaxed = true)
         deltaRb = mockk(relaxed = true)
+        countRb = mockk(relaxed = true)
         entraUserSyncService = mockk(relaxed = true)
         userRepository = mockk(relaxed = true)
         userExternalRepository = mockk(relaxed = true)
 
         every { configUser.userpagingsize } returns 50
         every { configUser.userAttributesDelta() } returns arrayOf("id")
-
         every { graphServiceClient.users() } returns usersRb
         every { usersRb.delta() } returns deltaRb
+        every { usersRb.count() } returns countRb
 
-        coEvery { entraUserSyncService.processPage(any(), any()) } returns 0
+        coEvery { entraUserSyncService.processPage(any(), any(), any()) } returns 0
         coEvery { entraUserSyncService.finishFullImport(any()) } returns 0
         coEvery { entraUserSyncService.finishFullImportExternal(any()) } returns 0
 
-        coEvery { userRepository.findStaleObjectIds(any()) } returns emptyList()
-        coEvery { userExternalRepository.findStaleObjectIds(any()) } returns emptyList()
-        coEvery { userRepository.incrementNotSeenCount(any()) } returns Unit
-        coEvery { userExternalRepository.incrementNotSeenCount(any()) } returns Unit
+        every { userRepository.getCount() } returns 0
+        every { userRepository.findStaleObjectIds(any()) } returns emptyList()
+        every { userExternalRepository.findStaleObjectIds(any()) } returns emptyList()
+        every { userRepository.incrementNotSeenCount(any()) } returns Unit
+        every { userExternalRepository.incrementNotSeenCount(any()) } returns Unit
     }
 
     @AfterEach
