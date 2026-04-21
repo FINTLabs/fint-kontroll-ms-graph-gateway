@@ -18,6 +18,7 @@ import java.util.UUID
 import java.util.concurrent.CompletionException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.abs
 
 @Component
 class MsGraphUser(
@@ -105,8 +106,8 @@ class MsGraphUser(
                 val firstPage =
                     try {
                         callGraph { buildInitialRequest(userDeltaLink) }
-                    } catch (ae: ApiException) {
-                        if (!userDeltaLink.isNullOrBlank() && ae.isInvalidDeltaState()) {
+                    } catch (exception: ApiException) {
+                        if (!userDeltaLink.isNullOrBlank() && exception.isInvalidDeltaState()) {
                             log.warn("Resetting deltaLink and retrying fresh delta.")
 
                             userDeltaLink = null
@@ -116,7 +117,7 @@ class MsGraphUser(
 
                             callGraph { buildInitialRequest(null) }
                         } else {
-                            throw ae
+                            throw exception
                         }
                     }
 
@@ -259,7 +260,7 @@ class MsGraphUser(
                 } ?: 0
         val totalCountDb = userRepository.getCount()
         if (totalCountDb != 0 &&
-            Math.abs(totalCountSource - totalCountDb).div(totalCountDb) <
+            abs(totalCountSource - totalCountDb).div(totalCountDb) <
             Math.divideExact(
                 configUser.acceptedDeviationPercent ?: 0,
                 100,
@@ -362,11 +363,11 @@ class MsGraphUser(
     private suspend fun <T> callGraph(block: () -> T): T =
         try {
             withContext(Dispatchers.IO) { block() }
-        } catch (ae: ApiException) {
-            log.error("Graph call failed with error code {}. {}", ae.responseStatusCode, ae.message)
-            throw ae
-        } catch (e: Exception) {
-            throw if (e is RuntimeException) e else CompletionException(e)
+        } catch (apiException: ApiException) {
+            log.error("Graph call failed with error code {}. {}", apiException.responseStatusCode, apiException.message)
+            throw apiException
+        } catch (exception: Exception) {
+            throw exception as? RuntimeException ?: CompletionException(exception)
         }
 
     private fun logElapsed(

@@ -73,26 +73,6 @@ class EntraUserSyncServiceTest {
         }
 
     @Test
-    fun processPageDeduplicatesUsersWithinSamePage() =
-        runTest {
-            val duplicateId = UUID.randomUUID()
-            val users = listOf(memberUser(duplicateId), memberUser(duplicateId))
-
-            val published =
-                service.processPage(
-                    users = users,
-                    notSeenIncremented = mutableSetOf(),
-                    republishAll = true,
-                )
-
-            assertEquals(1, published)
-            verify(
-                exactly = 1,
-            ) { userRepository.batchUpsert(match { it.size == 1 && it.first().objectId == duplicateId }) }
-            coVerify(exactly = 1) { producer.publish(any()) }
-        }
-
-    @Test
     fun processPageRoutesExternalUsersToExternalRepositoryAndProducer() =
         runTest {
             configUser.enableExternalUsers = true

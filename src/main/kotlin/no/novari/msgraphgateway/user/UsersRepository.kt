@@ -104,22 +104,31 @@ open class UsersRepository(
 
     private val batchUpsertSql =
         """
-       WITH input AS (
-  SELECT *
-  FROM unnest(
-    :objectIds::uuid[],
-    :checksums::bytea[],
-    :lastSeenAts::timestamptz[]
-  ) AS t(object_id, checksum, last_seen_at)
-)
-INSERT INTO $table (object_id, checksum, last_seen_at, not_seen_count)
-SELECT object_id, checksum, last_seen_at, 0
-FROM input
-ON CONFLICT (object_id) DO UPDATE
-SET
-  checksum = EXCLUDED.checksum,
-  last_seen_at = EXCLUDED.last_seen_at,
-  not_seen_count = 0
+        WITH input AS (
+        SELECT *
+            FROM unnest(
+            :objectIds::uuid[],
+            :checksums::bytea[],
+            :lastSeenAts::timestamptz[]
+            ) AS t(object_id, checksum, last_seen_at)
+        )
+        INSERT INTO $table (object_id, checksum, last_seen_at, not_seen_count)
+        SELECT object_id, checksum, last_seen_at, 0
+        FROM input
+        ON CONFLICT (object_id) DO UPDATE
+        SET
+          checksum = EXCLUDED.checksum,
+          last_seen_at = EXCLUDED.last_seen_at,
+          not_seen_count = 0
+        """.trimIndent()
+
+    private val existsByIdSql =
+        """
+        SELECT EXISTS (
+          SELECT 1
+          FROM $table
+          WHERE object_id = :objectId
+        )
         """.trimIndent()
 
     override fun findStaleObjectIds(cutoff: Instant): List<UUID> {
@@ -182,15 +191,6 @@ SET
     }
 
     override fun getCount(): Int = jdbc.queryForObject(countAllSql, MapSqlParameterSource(), Int::class.java) ?: 0
-
-    private val existsByIdSql =
-        """
-        SELECT EXISTS (
-          SELECT 1
-          FROM $table
-          WHERE object_id = :objectId
-        )
-        """.trimIndent()
 
     override fun existsById(objectId: UUID): Boolean {
         val params = MapSqlParameterSource().addValue("objectId", objectId)
