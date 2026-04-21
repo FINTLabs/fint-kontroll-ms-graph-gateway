@@ -10,6 +10,10 @@ spec:
   env:
     - name: spring.kafka.consumer.group-id
       value: 'fint-kontroll-ms-graph-gateway'
+    - name: fint.kontroll.authorization.authorized-role
+      value: "https://role-catalog.vigoiks.no/vigo/kontroll/user"
+    - name: fint.kontroll.authorization.authorized-org-id
+      value: "vigo.no"
   envFrom:
     - secretRef:
         name: fint-kontroll-ms-graph-gateway
