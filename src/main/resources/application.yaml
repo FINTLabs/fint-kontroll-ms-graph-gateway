@@ -41,6 +41,11 @@ novari:
             full-import:
                 cron: 0 15 12 * * *
 ms-graph:
+    membership:
+        device:
+            consumer-concurrency: 12
+            consumer-max-poll-records: 500
+            result-topic-partitions: 1
     user:
         #Set variable user Attributes. Case sensitive. See User Object in Graph
         use-same-id-num-attribute: false
@@ -59,6 +64,3 @@ ms-graph:
         stale-after-days: 21
         accepted-deviation-percent: 5
         min-not-seen-count: 7
-
-
-
