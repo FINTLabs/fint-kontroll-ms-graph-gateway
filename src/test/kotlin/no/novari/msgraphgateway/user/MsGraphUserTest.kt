@@ -5,6 +5,7 @@ import com.microsoft.graph.users.delta.DeltaGetResponse
 import com.microsoft.kiota.ApiException
 import io.mockk.*
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -18,6 +19,7 @@ import kotlin.reflect.full.callSuspend
 import kotlin.reflect.full.declaredFunctions
 import kotlin.reflect.jvm.isAccessible
 
+@ExperimentalCoroutinesApi
 class MsGraphUserTest {
     private lateinit var configUser: ConfigUser
     private lateinit var deltaLinkStore: DeltaLinkStore
