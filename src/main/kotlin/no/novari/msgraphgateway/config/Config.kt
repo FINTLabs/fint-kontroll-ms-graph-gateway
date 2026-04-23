@@ -67,23 +67,25 @@ open class Config {
                         log.error("client-request-id differs from the returned client-request-id")
                     }
 
-                    val logMap = mapOf(
-                        "type" to "http_response",
-                        "method" to request.method,
-                        "url" to request.url.newBuilder()
-                            .query(null)
-                            .build()
-                            .toString(),
-                        "client-request-id" to request.header("client-request-id"),
-                        "request-id" to response.header("request-id"),
-                        "date" to response.header("Date")
-                    )
+                    val logMap =
+                        mapOf(
+                            "type" to "http_response",
+                            "method" to request.method,
+                            "url" to
+                                request.url
+                                    .newBuilder()
+                                    .query(null)
+                                    .build()
+                                    .toString(),
+                            "client-request-id" to request.header("client-request-id"),
+                            "request-id" to response.header("request-id"),
+                            "date" to response.header("Date"),
+                        )
 
                     log.debug(logMap.toString())
 
                     response
-                }
-                .build()
+                }.build()
 
         return GraphServiceClient(
             AzureIdentityAuthenticationProvider(cred, emptyArray<String>(), *scopes),

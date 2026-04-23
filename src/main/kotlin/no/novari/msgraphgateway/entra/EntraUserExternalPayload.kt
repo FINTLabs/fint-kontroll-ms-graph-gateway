@@ -1,6 +1,5 @@
 package no.novari.msgraphgateway.entra
 
-
 import java.io.Serializable
 
 data class EntraUserExternalPayload(

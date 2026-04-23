@@ -51,13 +51,13 @@ data class EntraUser(
             }
         }
     }
-    fun toPayload(): EntraUserPayload {
-        return EntraUserPayload(
+
+    fun toPayload(): EntraUserPayload =
+        EntraUserPayload(
             mail = mail,
             userPrincipalName = userPrincipalName,
             employeeId = employeeId,
             studentId = studentId,
             accountEnabled = accountEnabled,
         )
-    }
 }

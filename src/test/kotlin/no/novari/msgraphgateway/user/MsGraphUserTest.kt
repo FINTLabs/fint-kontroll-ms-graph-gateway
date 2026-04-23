@@ -5,19 +5,13 @@ import com.microsoft.graph.users.delta.DeltaGetResponse
 import com.microsoft.kiota.ApiException
 import io.mockk.*
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
-import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import no.novari.msgraphgateway.config.ConfigUser
 import no.novari.msgraphgateway.entra.DeltaLinkStore
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertFalse
-import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import kotlin.reflect.full.callSuspend
@@ -25,15 +19,14 @@ import kotlin.reflect.full.declaredFunctions
 import kotlin.reflect.jvm.isAccessible
 
 class MsGraphUserTest {
-
     private lateinit var configUser: ConfigUser
     private lateinit var deltaLinkStore: DeltaLinkStore
     private lateinit var graphServiceClient: GraphServiceClient
     private lateinit var usersRb: com.microsoft.graph.users.UsersRequestBuilder
     private lateinit var deltaRb: com.microsoft.graph.users.delta.DeltaRequestBuilder
     private lateinit var entraUserSyncService: EntraUserSyncService
-    private lateinit var coreUserRepository: CoreUserRepository
-    private lateinit var coreUserExternalRepository: CoreUserExternalRepository
+    private lateinit var userRepository: UserRepository
+    private lateinit var userExternalRepository: UserExternalRepository
 
     @Test
     fun invalidDeltaLinkDoesNotCallFreshDelta() =
@@ -136,7 +129,8 @@ class MsGraphUserTest {
         }
 
     @Test
-    fun fullImportStoresNewDeltaLink() = runTest {
+    fun fullImportStoresNewDeltaLink() =
+        runTest {
             val configUser = mockk<ConfigUser>()
             every { configUser.userpagingsize } returns 50
             every { configUser.userAttributesDelta() } returns arrayOf("id", "displayName")
@@ -198,59 +192,59 @@ class MsGraphUserTest {
         }
 
     @Test
-    fun fullImportUsers_doesNotStartSecondRunWhileFirstIsRunning() = runTest {
-        val started = CompletableDeferred<Unit>()
-        val finishFirstRun = CompletableDeferred<Unit>()
-        var importCount = 0
+    fun fullImportUsers_doesNotStartSecondRunWhileFirstIsRunning() =
+        runTest {
+            val started = CompletableDeferred<Unit>()
+            val finishFirstRun = CompletableDeferred<Unit>()
+            var importCount = 0
 
-        val msGraphUser = createMsGraphUser()
+            val msGraphUser = createMsGraphUser()
 
-        coEvery { msGraphUser["startFullImport"]() } coAnswers {
-            importCount++
-            if (importCount == 1) {
-                started.complete(Unit)
-                finishFirstRun.await()
+            coEvery { msGraphUser["startFullImport"]() } coAnswers {
+                importCount++
+                if (importCount == 1) {
+                    started.complete(Unit)
+                    finishFirstRun.await()
+                }
             }
+
+            msGraphUser.fullImportUsers()
+            started.await()
+
+            msGraphUser.fullImportUsers()
+
+            assertEquals(1, importCount)
+
+            finishFirstRun.complete(Unit)
         }
-
-        msGraphUser.fullImportUsers()
-        started.await()
-
-        msGraphUser.fullImportUsers()
-
-        assertEquals(1, importCount)
-
-        finishFirstRun.complete(Unit)
-    }
 
     @Test
-    fun pullAllUsersDelta_doesNotStartSecondRunWhileFirstIsRunning() = runTest {
+    fun pullAllUsersDelta_doesNotStartSecondRunWhileFirstIsRunning() =
+        runTest {
+            val firstRunStarted = CompletableDeferred<Unit>()
+            val allowFirstRunToFinish = CompletableDeferred<Unit>()
 
-        val firstRunStarted = CompletableDeferred<Unit>()
-        val allowFirstRunToFinish = CompletableDeferred<Unit>()
+            val msGraphUser = createMsGraphUser()
 
-        val msGraphUser = createMsGraphUser()
+            val firstPage = mockk<DeltaGetResponse>(relaxed = true)
 
-        val firstPage = mockk<DeltaGetResponse>(relaxed = true)
+            coEvery { deltaRb.get(any()) } coAnswers {
+                firstRunStarted.complete(Unit)
+                allowFirstRunToFinish.await()
+                firstPage
+            }
 
-        coEvery { deltaRb.get(any()) } coAnswers {
-            firstRunStarted.complete(Unit)
-            allowFirstRunToFinish.await()
-            firstPage
+            msGraphUser.pullAllUsersDelta()
+            firstRunStarted.await()
+
+            msGraphUser.pullAllUsersDelta()
+            advanceUntilIdle()
+
+            coVerify(exactly = 1) { deltaRb.get(any()) }
+
+            allowFirstRunToFinish.complete(Unit)
+            advanceUntilIdle()
         }
-
-        msGraphUser.pullAllUsersDelta()
-        firstRunStarted.await()
-
-        msGraphUser.pullAllUsersDelta()
-        advanceUntilIdle()
-
-        coVerify(exactly = 1) { deltaRb.get(any()) }
-
-        allowFirstRunToFinish.complete(Unit)
-        advanceUntilIdle()
-
-    }
 
     private suspend fun invokePrivateSuspendStartFullImport(sut: Any) {
         val kClass = sut::class
@@ -278,17 +272,18 @@ class MsGraphUserTest {
         f.set(target, value)
     }
 
-    private fun createMsGraphUser() = spyk(
-        MsGraphUser(
-            configUser = configUser,
-            graphServiceClient = graphServiceClient,
-            entraUserSyncService = entraUserSyncService,
-            deltaLinkStore = deltaLinkStore,
-            coreUserRepository = coreUserRepository,
-            coreUserExternalRepository = coreUserExternalRepository
-        ),
-        recordPrivateCalls = true
-    )
+    private fun createMsGraphUser() =
+        spyk(
+            MsGraphUser(
+                configUser = configUser,
+                graphServiceClient = graphServiceClient,
+                entraUserSyncService = entraUserSyncService,
+                deltaLinkStore = deltaLinkStore,
+                userRepository = userRepository,
+                userExternalRepository = userExternalRepository,
+            ),
+            recordPrivateCalls = true,
+        )
 
     @BeforeEach
     fun beforeEach() {
@@ -298,9 +293,8 @@ class MsGraphUserTest {
         usersRb = mockk(relaxed = true)
         deltaRb = mockk(relaxed = true)
         entraUserSyncService = mockk(relaxed = true)
-        coreUserRepository = mockk(relaxed = true)
-        coreUserExternalRepository = mockk(relaxed = true)
-
+        userRepository = mockk(relaxed = true)
+        userExternalRepository = mockk(relaxed = true)
 
         every { configUser.userpagingsize } returns 50
         every { configUser.userAttributesDelta() } returns arrayOf("id")
@@ -312,11 +306,10 @@ class MsGraphUserTest {
         coEvery { entraUserSyncService.finishFullImport(any()) } returns 0
         coEvery { entraUserSyncService.finishFullImportExternal(any()) } returns 0
 
-        coEvery { coreUserRepository.findStaleObjectIds(any()) } returns emptyList()
-        coEvery { coreUserExternalRepository.findStaleObjectIds(any()) } returns emptyList()
-        coEvery { coreUserRepository.incrementNotSeenCount(any()) } returns Unit
-        coEvery { coreUserExternalRepository.incrementNotSeenCount(any()) } returns Unit
-
+        coEvery { userRepository.findStaleObjectIds(any()) } returns emptyList()
+        coEvery { userExternalRepository.findStaleObjectIds(any()) } returns emptyList()
+        coEvery { userRepository.incrementNotSeenCount(any()) } returns Unit
+        coEvery { userExternalRepository.incrementNotSeenCount(any()) } returns Unit
     }
 
     @AfterEach
