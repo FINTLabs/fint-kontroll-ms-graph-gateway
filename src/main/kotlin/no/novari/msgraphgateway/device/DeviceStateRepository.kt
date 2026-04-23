@@ -2,13 +2,14 @@
 
 package no.novari.msgraphgateway.device
 
+import no.novari.msgraphgateway.entra.Checksum
 import java.time.Instant
 import java.util.*
 
 interface DeviceStateRepository {
     data class UpsertRow(
         val objectId: UUID,
-        val checksum: ByteArray,
+        val checksum: Checksum,
         val lastSeenAt: Instant,
     )
 

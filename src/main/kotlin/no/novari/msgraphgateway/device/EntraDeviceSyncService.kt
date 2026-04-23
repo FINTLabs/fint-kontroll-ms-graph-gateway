@@ -7,6 +7,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import no.novari.msgraphgateway.config.ConfigDevice
+import no.novari.msgraphgateway.entra.Checksum
 import no.novari.msgraphgateway.entra.ChecksumService
 import no.novari.msgraphgateway.entra.EntraDevice
 import no.novari.msgraphgateway.kafka.EntraDeviceProducerService
@@ -126,7 +127,7 @@ class EntraDeviceSyncService(
         repo: DeviceStateRepository,
         candidates: List<Pair<UUID, Device>>,
         toDto: (Device) -> DTO,
-        checksum: (DTO) -> ByteArray,
+        checksum: (DTO) -> Checksum,
         publish: suspend (DTO) -> Unit,
         logLabel: String,
     ): Int =
@@ -136,7 +137,7 @@ class EntraDeviceSyncService(
             data class Computed<DTO>(
                 val id: UUID,
                 val dto: DTO,
-                val checksum: ByteArray,
+                val checksum: Checksum,
             )
 
             val computed: List<Computed<DTO>> =
