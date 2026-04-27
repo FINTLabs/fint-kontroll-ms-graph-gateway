@@ -16,7 +16,7 @@ data class TriggerResponse(
 )
 
 @RestController
-@RequestMapping("/api")
+@RequestMapping("/api/admin")
 class UserController(
     private val groupService: GroupService,
     private val msGraphUser: MsGraphUser,
@@ -39,7 +39,7 @@ class UserController(
     }
 
     @OnlyDevelopers
-    @PostMapping("/admin/users/full-sync")
+    @PostMapping("/users/full-sync")
     fun triggerUserFullSync(): ResponseEntity<TriggerResponse> {
         userService.triggerFullImport(false)
         return ResponseEntity
@@ -48,7 +48,7 @@ class UserController(
     }
 
     @OnlyDevelopers
-    @PostMapping("/admin/users/delta-sync")
+    @PostMapping("/users/delta-sync")
     fun triggerUserDeltaSync(): ResponseEntity<TriggerResponse> {
         msGraphUser.pullAllUsersDelta()
         return ResponseEntity
@@ -57,7 +57,7 @@ class UserController(
     }
 
     @OnlyDevelopers
-    @PostMapping("/admin/users/republish-and-full-sync")
+    @PostMapping("/users/republish-and-full-sync")
     fun triggerRepublishAndFullSync(): ResponseEntity<TriggerResponse> {
         userService.triggerFullImport(true)
         return ResponseEntity
