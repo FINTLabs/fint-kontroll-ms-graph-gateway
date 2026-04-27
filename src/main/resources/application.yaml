@@ -40,25 +40,6 @@ novari:
                 initial-delay-ms: 10000
             full-import:
                 cron: 0 15 12 * * *
-ms-graph:
-    user:
-        #Set variable user Attributes. Case sensitive. See User Object in Graph
-        use-same-id-num-attribute: false
-        user-id-num-attribute: employeeId
-        validator-attribute: employeeType
-        student-validator: elev
-        employee-validator: tilsett
-        employeeidattribute:
-        studentidattribute:
-        mainorgunitidattribute:
-        mainorgunitnameattribute:
-        enableexternalusers: false
-        externaluserattribute:
-        externaluservalue: ----
-        userpagingsize: 100
-        stale-after-days: 21
-        accepted-deviation-percent: 5
-        min-not-seen-count: 7
 
 
 
