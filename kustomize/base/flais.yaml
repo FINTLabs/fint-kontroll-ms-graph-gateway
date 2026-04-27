@@ -26,6 +26,8 @@ spec:
         permission: read
       - topic: 'fintlabs-no.kontroll.*'
         permission: admin
+
+
   observability:
       metrics:
           enabled: true
