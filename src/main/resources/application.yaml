@@ -44,5 +44,9 @@ novari:
             full-import:
                 cron: 0 15 12 * * *
 
-
+management:
+    endpoints:
+        web:
+            exposure:
+                include: "prometheus,health,info"
 
