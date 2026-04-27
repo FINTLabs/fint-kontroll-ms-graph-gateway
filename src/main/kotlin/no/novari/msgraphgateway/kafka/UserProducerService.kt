@@ -44,7 +44,7 @@ class UserProducerService(
             EntityTopicConfiguration
                 .stepBuilder()
                 .partitions(1)
-                .lastValueRetainedForever()
+                .lastValueRetentionTime(Duration.ofDays(30))
                 .nullValueRetentionTime(Duration.ofDays(7))
                 .cleanupFrequency(EntityCleanupFrequency.NORMAL)
                 .build(),
