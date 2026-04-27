@@ -25,7 +25,7 @@ logging:
         org.apache: WARN
         org.springframework.boot.autoconfigure.flyway: INFO
         org.flywaydb: INFO
-        no.novari: INFO
+        no.novari: DEBUG
 
 novari:
     application-id: fint-kontroll-ms-graph-gateway

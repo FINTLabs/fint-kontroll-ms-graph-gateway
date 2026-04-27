@@ -104,7 +104,7 @@ class EntraUserSyncService(
 
             val removedUsers = batch.filter { it.additionalData.containsKey("@removed") }
             if (removedUsers.isNotEmpty()) {
-                log.debug("There are {} removed users", removedUsers.size)
+                log.info("There are {} removed users", removedUsers.size)
                 removedUsers.forEach { u ->
                     handleRemoved(u.id, notSeenIncremented)
                 }
