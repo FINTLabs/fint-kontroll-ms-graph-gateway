@@ -1,15 +1,15 @@
 novari:
-  kafka:
-    default-replicas: 1
-    topic:
-      domain-context: kontroll
-      org-id: fintlabs-no
-    application-id: ${fint.application-id}
+    kafka:
+        default-replicas: 1
+        topic:
+            domain-context: kontroll
+            org-id: fintlabs-no
+        application-id: ${fint.application-id}
 spring:
-  kafka:
-    bootstrap-servers: localhost:9092
-    consumer:
-      group-id: fint-kontroll-ms-graph-gateway
-    profiles:
-      include:
-        - observability
+    kafka:
+        bootstrap-servers: localhost:9092
+        consumer:
+            group-id: fint-kontroll-ms-graph-gateway
+        profiles:
+            include:
+                - observability

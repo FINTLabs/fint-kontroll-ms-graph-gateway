@@ -1,8 +1,18 @@
+fint:
+    application-id: fint-kontroll-ms-graph-gateway
+    kontroll:
+        opa:
+            url: http://fint-kontroll-opa:8181/v1/data/accessmanagement
 spring:
-  profiles:
-    include:
-      - kafka
-      - db
+    profiles:
+        include:
+            - kafka
+            - db
+    security:
+        oauth2:
+            resourceserver:
+                jwt:
+                    issuer-uri: https://idp.felleskomponent.no/nidp/oauth/nam
 server:
   port: 8080
 
@@ -18,27 +28,27 @@ logging:
     no.novari: INFO
 
 novari:
-  application-id: fint-kontroll-ms-graph-gateway
-  org-id: fintlabs.no
-  kafka:
-    topic:
-      org-id: fintlabs-no
-      domain-context: kontroll
-    application-id: fintlabs.no
-    default-replicas: 1
-  scheduler:
-      user:
+    application-id: fint-kontroll-ms-graph-gateway
+    org-id: fintlabs.no
+    kafka:
+        topic:
+            org-id: fintlabs-no
+            domain-context: kontroll
+        application-id: fintlabs.no
+        default-replicas: 1
+    scheduler:
+        user:
+            delta:
+                fixed-delay-ms: 1200000
+                initial-delay-ms: 10000
+            full-import:
+                cron: 0 15 12 * * *
+        device:
           delta:
-              fixed-delay-ms: 450000
-              initial-delay-ms: 1000
+            fixed-delay-ms: 500000
+            initial-delay-ms: 1000
           full-import:
-              cron: 0 0 12 * * *
-      device:
-        delta:
-          fixed-delay-ms: 500000
-          initial-delay-ms: 1000
-        full-import:
-          cron: 0 0 12 * * *
+            cron: 0 0 12 * * *
 
 ms-graph:
   user:
@@ -71,5 +81,9 @@ ms-graph:
     device-id-attribute: extension_be2ffab7d262452b888aeb756f742377_FintKontrollDeviceId
     device-paging-size: 999
 
-
+management:
+    endpoints:
+        web:
+            exposure:
+                include: "prometheus,health,info"
 

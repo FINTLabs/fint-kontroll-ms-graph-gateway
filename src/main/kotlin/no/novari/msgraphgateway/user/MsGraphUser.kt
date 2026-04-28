@@ -18,6 +18,7 @@ import java.util.UUID
 import java.util.concurrent.CompletionException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.abs
 
 @Component
 class MsGraphUser(
@@ -31,6 +32,7 @@ class MsGraphUser(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val runMutex = Mutex()
     private val fullImportRequested = AtomicBoolean(false)
+    private val republishAllRequested = AtomicBoolean(false)
 
     @Volatile
     private var userDeltaLink: String? = null
@@ -105,8 +107,8 @@ class MsGraphUser(
                 val firstPage =
                     try {
                         callGraph { buildInitialRequest(userDeltaLink) }
-                    } catch (ae: ApiException) {
-                        if (!userDeltaLink.isNullOrBlank() && ae.isInvalidDeltaState()) {
+                    } catch (exception: ApiException) {
+                        if (!userDeltaLink.isNullOrBlank() && exception.isInvalidDeltaState()) {
                             log.warn("Resetting deltaLink and retrying fresh delta.")
 
                             userDeltaLink = null
@@ -116,12 +118,12 @@ class MsGraphUser(
 
                             callGraph { buildInitialRequest(null) }
                         } else {
-                            throw ae
+                            throw exception
                         }
                     }
 
                 val notSeenIncremented = ConcurrentHashMap.newKeySet<UUID>()
-                pageThroughUsers(firstPage, isFullImport = false, notSeenIncremented = notSeenIncremented)
+                pageThroughUsers(firstPage, isFullImport = false, notSeenIncremented = notSeenIncremented, false)
             } catch (e: RuntimeException) {
                 log.error("Delta users pull failed: {}", e.message, e)
             } finally {
@@ -137,7 +139,14 @@ class MsGraphUser(
 
     @Scheduled(cron = $$"${novari.scheduler.user.full-import.cron}")
     fun fullImportUsers() {
+        requestFullImport(false)
+    }
+
+    fun requestFullImport(republishAll: Boolean = false) {
         fullImportRequested.set(true)
+        if (republishAll) {
+            republishAllRequested.set(true)
+        }
 
         scope.launch {
             if (!runMutex.tryLock()) {
@@ -146,9 +155,10 @@ class MsGraphUser(
             }
 
             val startTime = System.currentTimeMillis()
+            val republishRequested = republishAllRequested.getAndSet(false)
 
             try {
-                startFullImport()
+                startFullImport(republishRequested)
             } finally {
                 runMutex.unlock()
                 logElapsed(startTime, "full import of users")
@@ -162,8 +172,9 @@ class MsGraphUser(
         if (!runMutex.tryLock()) return
 
         val startTime = System.currentTimeMillis()
+        val republishRequested = republishAllRequested.getAndSet(false)
         try {
-            startFullImport()
+            startFullImport(republishRequested)
         } finally {
             runMutex.unlock()
             logElapsed(startTime, "full import of users")
@@ -171,7 +182,7 @@ class MsGraphUser(
         }
     }
 
-    private suspend fun startFullImport() {
+    suspend fun startFullImport(republishAll: Boolean = false) {
         val runStartTime = Instant.now()
         val trackingId = UUID.randomUUID().toString()
         val notSeenIncremented = ConcurrentHashMap.newKeySet<UUID>()
@@ -199,7 +210,8 @@ class MsGraphUser(
                     }
             }
 
-        val result = pageThroughUsers(firstPage, isFullImport = true, notSeenIncremented = notSeenIncremented)
+        val result =
+            pageThroughUsers(firstPage, isFullImport = true, notSeenIncremented = notSeenIncremented, republishAll)
         markNotSeenUsers(runStartTime, notSeenIncremented)
         val cutoff = Instant.now().minus(configUser.staleAfterDays.toLong(), ChronoUnit.DAYS)
         val deletedUsers = withContext(Dispatchers.IO) { entraUserSyncService.finishFullImport(cutoff) }
@@ -250,7 +262,7 @@ class MsGraphUser(
                 } ?: 0
         val totalCountDb = userRepository.getCount()
         if (totalCountDb != 0 &&
-            Math.abs(totalCountSource - totalCountDb).div(totalCountDb) <
+            abs(totalCountSource - totalCountDb).div(totalCountDb) <
             Math.divideExact(
                 configUser.acceptedDeviationPercent ?: 0,
                 100,
@@ -267,6 +279,7 @@ class MsGraphUser(
         firstPage: DeltaGetResponse?,
         isFullImport: Boolean,
         notSeenIncremented: MutableSet<UUID>,
+        republishAll: Boolean,
     ): PageResult {
         var current: DeltaGetResponse? = firstPage
         var last: DeltaGetResponse? = firstPage
@@ -293,7 +306,7 @@ class MsGraphUser(
 
                 val publishedThisPage =
                     withContext(Dispatchers.IO) {
-                        entraUserSyncService.processPage(value, notSeenIncremented)
+                        entraUserSyncService.processPage(value, notSeenIncremented, republishAll)
                     }
                 totalPublished += publishedThisPage
             } else {
@@ -352,11 +365,11 @@ class MsGraphUser(
     private suspend fun <T> callGraph(block: () -> T): T =
         try {
             withContext(Dispatchers.IO) { block() }
-        } catch (ae: ApiException) {
-            log.error("Graph call failed with error code {}. {}", ae.responseStatusCode, ae.message)
-            throw ae
-        } catch (e: Exception) {
-            throw if (e is RuntimeException) e else CompletionException(e)
+        } catch (apiException: ApiException) {
+            log.error("Graph call failed with error code {}. {}", apiException.responseStatusCode, apiException.message)
+            throw apiException
+        } catch (exception: Exception) {
+            throw exception as? RuntimeException ?: CompletionException(exception)
         }
 
     private fun logElapsed(
