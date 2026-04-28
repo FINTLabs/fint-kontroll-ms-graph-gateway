@@ -15,6 +15,8 @@ interface UserStateRepository {
 
     fun batchUpsertReturningChanged(rows: List<UpsertRow>): Set<UUID>
 
+    fun batchUpsert(rows: List<UpsertRow>)
+
     fun deleteById(objectId: UUID)
 
     fun deleteByIdsReturningObjectIds(objectIds: Collection<UUID>): List<UUID>
