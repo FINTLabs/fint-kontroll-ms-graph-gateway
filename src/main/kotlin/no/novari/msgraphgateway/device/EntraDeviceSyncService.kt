@@ -7,10 +7,10 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import no.novari.msgraphgateway.config.ConfigDevice
-import no.novari.msgraphgateway.entra.Checksum
-import no.novari.msgraphgateway.entra.ChecksumService
 import no.novari.msgraphgateway.entra.EntraDevice
 import no.novari.msgraphgateway.kafka.EntraDeviceProducerService
+import no.novari.msgraphgateway.service.Checksum
+import no.novari.msgraphgateway.service.ChecksumService
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.time.Instant

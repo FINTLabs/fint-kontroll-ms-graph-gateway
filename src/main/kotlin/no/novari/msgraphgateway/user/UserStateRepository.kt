@@ -1,6 +1,6 @@
 package no.novari.msgraphgateway.user
 
-import no.novari.msgraphgateway.entra.Checksum
+import no.novari.msgraphgateway.service.Checksum
 import java.time.Instant
 import java.util.*
 

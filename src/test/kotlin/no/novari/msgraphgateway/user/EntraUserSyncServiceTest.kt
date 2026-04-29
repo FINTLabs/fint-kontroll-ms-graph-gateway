@@ -10,10 +10,10 @@ import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.test.runTest
 import no.novari.msgraphgateway.config.ConfigUser
-import no.novari.msgraphgateway.entra.Checksum
-import no.novari.msgraphgateway.entra.ChecksumService
 import no.novari.msgraphgateway.kafka.UserExternalProducerService
 import no.novari.msgraphgateway.kafka.UserProducerService
+import no.novari.msgraphgateway.service.Checksum
+import no.novari.msgraphgateway.service.ChecksumService
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach

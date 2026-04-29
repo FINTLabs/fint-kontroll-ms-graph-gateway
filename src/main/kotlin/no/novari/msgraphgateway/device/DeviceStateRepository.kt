@@ -2,7 +2,7 @@
 
 package no.novari.msgraphgateway.device
 
-import no.novari.msgraphgateway.entra.Checksum
+import no.novari.msgraphgateway.service.Checksum
 import java.time.Instant
 import java.util.*
 
