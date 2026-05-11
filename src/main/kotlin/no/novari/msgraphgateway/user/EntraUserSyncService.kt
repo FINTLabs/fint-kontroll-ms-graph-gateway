@@ -16,6 +16,8 @@ import org.springframework.stereotype.Service
 import java.time.Instant
 import java.util.*
 
+private const val EXTERNAL_USERS = "external users"
+
 @Service
 class EntraUserSyncService(
     private val userRepository: UserRepository,
@@ -24,6 +26,8 @@ class EntraUserSyncService(
     private val producer: UserProducerService,
     private val externalProducer: UserExternalProducerService,
     private val configUser: ConfigUser,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val defaultDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) {
     private val batchSize = 1000
     private val checksumPermits = Semaphore(32)
@@ -56,7 +60,7 @@ class EntraUserSyncService(
             repo = userExternalRepository,
             cutoff = cutoff,
             publishDeleted = { id -> externalProducer.publishDeletedUser(id) },
-            label = "external users",
+            label = EXTERNAL_USERS,
         )
 
     private suspend fun finishFullImportFor(
@@ -66,7 +70,7 @@ class EntraUserSyncService(
         label: String,
     ): Int {
         val deletableIds =
-            withContext(Dispatchers.IO) {
+            withContext(ioDispatcher) {
                 repo.findStaleObjectIdsWithNotSeenCountGreaterThan(cutoff, configUser.minNotSeenCount)
             }
         log.info("Found {} stale {}", deletableIds.size, label)
@@ -75,7 +79,7 @@ class EntraUserSyncService(
         var deletedTotal = 0
         for (batch in deletableIds.chunked(batchSize)) {
             val deletedObjectIds =
-                withContext(Dispatchers.IO) {
+                withContext(ioDispatcher) {
                     repo.deleteByIdsReturningObjectIds(batch)
                 }
             deletedTotal += deletedObjectIds.size
@@ -83,7 +87,7 @@ class EntraUserSyncService(
             coroutineScope {
                 deletedObjectIds
                     .map { objectId ->
-                        async(Dispatchers.IO) {
+                        async(ioDispatcher) {
                             kafkaPermits.withPermit {
                                 publishDeleted(objectId.toString())
                             }
@@ -149,7 +153,7 @@ class EntraUserSyncService(
                         toDto = { u -> EntraUserExternal(u, configUser) },
                         publish = { dto -> externalProducer.publish(dto) },
                         checksum = { dto -> checksumService.checksum(dto) },
-                        logLabel = "external users",
+                        logLabel = EXTERNAL_USERS,
                     )
                 publishedUsers + publishedExternal
             } else {
@@ -172,7 +176,7 @@ class EntraUserSyncService(
                         toDto = { u -> EntraUserExternal(u, configUser) },
                         publish = { dto -> externalProducer.publish(dto) },
                         checksum = { dto -> checksumService.checksum(dto) },
-                        logLabel = "external users",
+                        logLabel = EXTERNAL_USERS,
                     )
                 publishedUsers + publishedExternal
             }
@@ -200,7 +204,7 @@ class EntraUserSyncService(
 
             val changedIds: Set<UUID> =
                 dbBatchPermits.withPermit {
-                    withContext(Dispatchers.IO) {
+                    withContext(ioDispatcher) {
                         repo.batchUpsertReturningChanged(prepared.rows)
                     }
                 }
@@ -212,7 +216,7 @@ class EntraUserSyncService(
             val jobs =
                 changedIds.mapNotNull { id ->
                     val dto = prepared.dtoById[id] ?: return@mapNotNull null
-                    async(Dispatchers.IO) {
+                    async(ioDispatcher) {
                         runCatching {
                             kafkaPermits.withPermit {
                                 publish(dto)
@@ -245,14 +249,14 @@ class EntraUserSyncService(
                 )
 
             dbBatchPermits.withPermit {
-                withContext(Dispatchers.IO) {
+                withContext(ioDispatcher) {
                     repo.batchUpsert(prepared.rows)
                 }
             }
             val jobs =
                 prepared.rows.mapNotNull { row ->
                     val dto = prepared.dtoById[row.objectId] ?: return@mapNotNull null
-                    async(Dispatchers.IO) {
+                    async(ioDispatcher) {
                         runCatching {
                             kafkaPermits.withPermit {
                                 publish(dto)
@@ -277,21 +281,21 @@ class EntraUserSyncService(
         }
 
         val existsInUsers =
-            runCatching { withContext(Dispatchers.IO) { userRepository.existsById(objectId) } }
+            runCatching { withContext(ioDispatcher) { userRepository.existsById(objectId) } }
                 .getOrDefault(false)
 
         val existsInExternal =
-            runCatching { withContext(Dispatchers.IO) { userExternalRepository.existsById(objectId) } }
+            runCatching { withContext(ioDispatcher) { userExternalRepository.existsById(objectId) } }
                 .getOrDefault(false)
 
         when {
             existsInUsers -> {
-                withContext(Dispatchers.IO) { userRepository.incrementNotSeenCount(listOf(objectId)) }
+                withContext(ioDispatcher) { userRepository.incrementNotSeenCount(listOf(objectId)) }
                 log.debug("Marked user {} as not seen (+1) in users due to @removed", objectId)
             }
 
             existsInExternal -> {
-                withContext(Dispatchers.IO) { userExternalRepository.incrementNotSeenCount(listOf(objectId)) }
+                withContext(ioDispatcher) { userExternalRepository.incrementNotSeenCount(listOf(objectId)) }
                 log.debug("Marked user {} as not seen (+1) in users_external due to @removed", objectId)
             }
 
@@ -317,7 +321,7 @@ class EntraUserSyncService(
             val computed: List<Computed<DTO>> =
                 candidates
                     .map { (id, u) ->
-                        async(Dispatchers.Default) {
+                        async(defaultDispatcher) {
                             val dto = toDto(u)
                             checksumPermits.withPermit {
                                 Computed(id, dto, checksum(dto))

@@ -7,7 +7,10 @@ import no.novari.kafka.topic.EventTopicService
 import no.novari.kafka.topic.configuration.EventCleanupFrequency
 import no.novari.kafka.topic.configuration.EventTopicConfiguration
 import no.novari.kafka.topic.name.EventTopicNameParameters
+import no.novari.kafka.topic.name.TopicNamePrefixParameters
 import org.slf4j.LoggerFactory
+import org.springframework.boot.context.event.ApplicationReadyEvent
+import org.springframework.context.event.EventListener
 import org.springframework.stereotype.Component
 import java.time.Duration
 
@@ -15,7 +18,7 @@ import java.time.Duration
 class EntraMembershipProducer(
     private val properties: DeviceMembershipProcessingProperties,
     parameterizedTemplateFactory: ParameterizedTemplateFactory,
-    entityTopicService: EventTopicService,
+    private val entityTopicService: EventTopicService,
 ) {
     private val template: ParameterizedTemplate<EntraDeviceMembership> =
         parameterizedTemplateFactory.createTemplate(EntraDeviceMembership::class.java)
@@ -24,9 +27,16 @@ class EntraMembershipProducer(
         EventTopicNameParameters
             .builder()
             .eventName("entra-device-group-membership")
-            .build()
+            .topicNamePrefixParameters(
+                TopicNamePrefixParameters
+                    .stepBuilder()
+                    .orgIdApplicationDefault()
+                    .domainContextApplicationDefault()
+                    .build(),
+            ).build()
 
-    init {
+    @EventListener(ApplicationReadyEvent::class)
+    fun initializeTopicOnStartup() {
         entityTopicService.createOrModifyTopic(
             nameParams,
             EventTopicConfiguration
@@ -36,6 +46,7 @@ class EntraMembershipProducer(
                 .cleanupFrequency(EventCleanupFrequency.NORMAL)
                 .build(),
         )
+        log.info("Initialized topic entra-device-group-membership with {} partitions", properties.resultTopicPartitions)
     }
 
     fun publish(

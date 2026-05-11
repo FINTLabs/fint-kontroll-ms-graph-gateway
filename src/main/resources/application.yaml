@@ -1,5 +1,8 @@
 fint:
     application-id: fint-kontroll-ms-graph-gateway
+    kontroll:
+        opa:
+            url: http://fint-kontroll-opa:8181/v1/data/accessmanagement
 spring:
     profiles:
         include:
@@ -22,7 +25,7 @@ logging:
         org.apache: WARN
         org.springframework.boot.autoconfigure.flyway: INFO
         org.flywaydb: INFO
-        no.novari: INFO
+        no.novari: DEBUG
 
 novari:
     application-id: fint-kontroll-ms-graph-gateway
@@ -45,22 +48,13 @@ ms-graph:
         device:
             consumer-concurrency: 12
             consumer-max-poll-records: 500
+            graph-max-concurrent-calls: 3
+            graph-batch-size: 20
             result-topic-partitions: 1
-    user:
-        #Set variable user Attributes. Case sensitive. See User Object in Graph
-        use-same-id-num-attribute: false
-        user-id-num-attribute: employeeId
-        validator-attribute: employeeType
-        student-validator: elev
-        employee-validator: tilsett
-        employeeidattribute:
-        studentidattribute:
-        mainorgunitidattribute:
-        mainorgunitnameattribute:
-        enableexternalusers: false
-        externaluserattribute:
-        externaluservalue: ----
-        userpagingsize: 100
-        stale-after-days: 21
-        accepted-deviation-percent: 5
-        min-not-seen-count: 7
+            directory-objects-base-url: https://graph.microsoft.com/v1.0/directoryObjects/
+
+management:
+    endpoints:
+        web:
+            exposure:
+                include: "prometheus,health,info"

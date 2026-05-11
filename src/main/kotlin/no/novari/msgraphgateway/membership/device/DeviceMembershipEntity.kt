@@ -14,9 +14,9 @@ import java.util.UUID
 @Embeddable
 data class DeviceMembershipId(
     @Column(name = "device_ref", nullable = false)
-    var deviceRef: UUID = UUID.randomUUID(),
-    @Column(name = "resource_ref", nullable = false)
-    var resourceRef: UUID = UUID.randomUUID(),
+    var deviceRef: UUID,
+    @Column(name = "group_ref", nullable = false)
+    var groupRef: UUID,
 ) : Serializable
 
 @Entity

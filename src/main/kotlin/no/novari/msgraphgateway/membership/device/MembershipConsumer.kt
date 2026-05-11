@@ -5,8 +5,10 @@ import no.novari.kafka.consuming.ErrorHandlerFactory
 import no.novari.kafka.consuming.ListenerConfiguration
 import no.novari.kafka.consuming.ParameterizedListenerContainerFactoryService
 import no.novari.kafka.topic.name.EventTopicNameParameters
+import no.novari.kafka.topic.name.TopicNamePrefixParameters
 import org.apache.kafka.clients.consumer.ConsumerRecord
 import org.springframework.context.annotation.Bean
+import org.springframework.kafka.listener.ConcurrentMessageListenerContainer
 import org.springframework.stereotype.Component
 
 @Component
@@ -20,25 +22,29 @@ class MembershipConsumer(
         ListenerConfiguration
             .stepBuilder()
             .groupIdApplicationDefault()
-            .maxPollRecords(properties.consumerMaxPollRecords)
+            .maxPollRecords(properties.consumerMaxPollRecords) // test with the default value and some smaller ones
             .maxPollIntervalKafkaDefault()
             .continueFromPreviousOffsetOnAssignment()
             .build()
 
-    val topic: EventTopicNameParameters? =
+    val topic: EventTopicNameParameters =
         EventTopicNameParameters
             .builder()
             .eventName("kontroll-resource-group-membership-device")
-            .build()
+            .topicNamePrefixParameters(
+                TopicNamePrefixParameters
+                    .stepBuilder()
+                    .orgIdApplicationDefault()
+                    .domainContextApplicationDefault()
+                    .build(),
+            ).build()
 
     @Bean
-    fun kontrollMembershipConsumer() =
+    fun kontrollMembershipConsumer(): ConcurrentMessageListenerContainer<String, DeviceResourceGroupMembership> =
         parameterizedListenerContainerFactoryService
-            .createRecordListenerContainerFactory(
+            .createBatchListenerContainerFactory(
                 DeviceResourceGroupMembership::class.java,
-                { record: ConsumerRecord<String, DeviceResourceGroupMembership> ->
-                    membershipService.sendMembershipToEntra(record.key(), record.value())
-                },
+                { batch -> membershipService.processKontrollMembershipBatch(batch) },
                 listenerConfiguration(),
                 errorHandlerFactory.createErrorHandler(
                     ErrorHandlerConfiguration
