@@ -122,6 +122,15 @@ SET
   not_seen_count = 0
         """.trimIndent()
 
+    private val existsByIdSql =
+        """
+        SELECT EXISTS (
+          SELECT 1
+          FROM $table
+          WHERE object_id = :objectId
+        )
+        """.trimIndent()
+
     override fun findStaleObjectIds(cutoff: Instant): List<UUID> {
         val params = MapSqlParameterSource().addValue("cutoff", cutoff.atOffset(ZoneOffset.UTC))
         return jdbc.query(findStaleObjectsByIdSql, params) { rs, _ ->
