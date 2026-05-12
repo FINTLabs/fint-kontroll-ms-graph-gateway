@@ -17,6 +17,12 @@ spec:
       value: "https://role-catalog.vigoiks.no/vigo/kontroll/user"
     - name: fint.kontroll.authorization.authorized-org-id
       value: "vigo.no"
+    - name: management.endpoints.web.base-path
+      value: "/actuator"
+    - name: management.endpoints.web.exposure.include
+      value: "prometheus,health,info"
+    - name: management.endpoint.prometheus.enabled
+      value: "true"
 
   envFrom:
     - secretRef:
