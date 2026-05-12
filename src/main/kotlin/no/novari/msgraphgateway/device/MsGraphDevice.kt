@@ -27,11 +27,12 @@ class MsGraphDevice(
     private val graphServiceClient: GraphServiceClient,
     private val entraDeviceSyncService: EntraDeviceSyncService,
     private val deltaLinkStore: DeltaLinkStore,
-    private val coreDeviceRepository: CoreDeviceRepository,
+    private val coreDeviceRepository: DeviceRepository,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val runMutex = Mutex()
     private val fullImportRequested = AtomicBoolean(false)
+    private val republishAllRequested = AtomicBoolean(false)
 
     @Volatile
     private var deviceDeltaLink: String? = null
@@ -60,7 +61,7 @@ class MsGraphDevice(
             log.info("Full import pending; skipping device delta run")
             return
         }
-
+        val trackingId = UUID.randomUUID().toString()
         scope.launch {
             if (!runMutex.tryLock()) {
                 log.info("Device sync already running; skipping delta run")
@@ -90,6 +91,8 @@ class MsGraphDevice(
                             .devices()
                             .delta()
                             .get { req ->
+                                req.headers.add("client-request-id", trackingId)
+                                req.headers.add("ConsistencyLevel", "eventual")
                                 req.queryParameters?.apply {
                                     select = selection
                                 }
@@ -131,7 +134,31 @@ class MsGraphDevice(
 
     @Scheduled(cron = "\${novari.scheduler.device.full-import.cron}")
     fun fullImportDevices() {
+        requestFullImport()
+    }
+
+    private suspend fun tryStartFullImportIfRequested() {
+        if (!fullImportRequested.get()) return
+        if (!runMutex.tryLock()) return
+
+        val startTime = System.currentTimeMillis()
+        val republishRequested = republishAllRequested.getAndSet(false)
+
+        try {
+            startFullImport(republishRequested)
+        } finally {
+            runMutex.unlock()
+            logElapsed(startTime, "full import of devices")
+            fullImportRequested.set(false)
+        }
+    }
+
+    fun requestFullImport(republishAll: Boolean = false) {
         fullImportRequested.set(true)
+
+        if (republishAll) {
+            republishAllRequested.set(true)
+        }
 
         scope.launch {
             if (!runMutex.tryLock()) {
@@ -140,8 +167,10 @@ class MsGraphDevice(
             }
 
             val startTime = System.currentTimeMillis()
+            val republishRequested = republishAllRequested.getAndSet(false)
+
             try {
-                startFullImport()
+                startFullImport(republishRequested)
             } finally {
                 runMutex.unlock()
                 logElapsed(startTime, "full import of devices")
@@ -150,21 +179,7 @@ class MsGraphDevice(
         }
     }
 
-    private suspend fun tryStartFullImportIfRequested() {
-        if (!fullImportRequested.get()) return
-        if (!runMutex.tryLock()) return
-
-        val startTime = System.currentTimeMillis()
-        try {
-            startFullImport()
-        } finally {
-            runMutex.unlock()
-            logElapsed(startTime, "full import of devices")
-            fullImportRequested.set(false)
-        }
-    }
-
-    private suspend fun startFullImport() {
+    private suspend fun startFullImport(republishAll: Boolean = false) {
         val runStartTime = Instant.now()
         val notSeenIncremented = ConcurrentHashMap.newKeySet<UUID>()
 
@@ -178,19 +193,26 @@ class MsGraphDevice(
             "Starting full import of devices from Microsoft Graph (pageSize={})",
             configDevice.devicePagingSize,
         )
-
+        val trackingId = UUID.randomUUID().toString()
         val firstPage =
             callGraph {
                 graphServiceClient
                     .devices()
                     .delta()
                     .get { req ->
+                        req.headers.add("client-request-id", trackingId)
                         req.headers.add("ConsistencyLevel", "eventual")
                         req.queryParameters?.select = selection
                     }
             }
 
-        val result = pageThroughDevices(firstPage, isFullImport = true, notSeenIncremented = notSeenIncremented)
+        val result =
+            pageThroughDevices(
+                firstPage,
+                isFullImport = true,
+                notSeenIncremented = notSeenIncremented,
+                republishAll = republishAll,
+            )
         markNotSeenDevices(runStartTime, notSeenIncremented)
 
         val cutoff = Instant.now().minus(configDevice.staleAfterDays.toLong(), ChronoUnit.DAYS)
@@ -224,7 +246,12 @@ class MsGraphDevice(
     }
 
     private fun shouldContinueWithImport(): Boolean {
-        val totalCountSource = graphServiceClient.devices().count().get { req -> req.headers.add("ConsistencyLevel", "eventual") } ?: 0
+        val trackingId = UUID.randomUUID().toString()
+        val totalCountSource =
+            graphServiceClient.devices().count().get { req ->
+                req.headers.add("client-request-id", trackingId)
+                req.headers.add("ConsistencyLevel", "eventual")
+            } ?: 0
         val totalCountDb = coreDeviceRepository.getCount()
 
         if (totalCountDb == 0) {
@@ -260,6 +287,7 @@ class MsGraphDevice(
         firstPage: DeltaGetResponse?,
         isFullImport: Boolean,
         notSeenIncremented: MutableSet<UUID>,
+        republishAll: Boolean = false,
     ): PageResult {
         var current: DeltaGetResponse? = firstPage
         var last: DeltaGetResponse? = firstPage
@@ -286,7 +314,7 @@ class MsGraphDevice(
 
                 val publishedThisPage =
                     withContext(Dispatchers.IO) {
-                        entraDeviceSyncService.processPage(value, notSeenIncremented)
+                        entraDeviceSyncService.processPage(value, notSeenIncremented, republishAll)
                     }
 
                 totalPublished += publishedThisPage

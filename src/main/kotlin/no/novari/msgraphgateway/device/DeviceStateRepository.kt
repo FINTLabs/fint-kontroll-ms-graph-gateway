@@ -13,6 +13,8 @@ interface DeviceStateRepository {
         val lastSeenAt: Instant,
     )
 
+    fun batchUpsert(rows: List<UpsertRow>)
+
     fun findStaleObjectIds(cutoff: Instant): List<UUID>
 
     fun batchUpsertReturningChanged(rows: List<UpsertRow>): Set<UUID>
