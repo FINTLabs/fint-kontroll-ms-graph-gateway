@@ -14,11 +14,11 @@ logging:
 spring:
     datasource:
         driver-class-name: org.postgresql.Driver
-        username: postgres
-        url: jdbc:postgresql://localhost:5432/postgres
-        password: postgres
+        username: msgraphuser
+        url: jdbc:postgresql://localhost:5432/postgres?currentSchema=msgraphuser
+        password: password
         hikari:
-            schema: ms-graph-gateway
+            schema: msgraphuser
 novari:
     scheduler:
         user:

@@ -26,6 +26,8 @@ services:
     configs:
       - source: server-json
         target: /pgadmin4/servers.json
+    volumes:
+        - pgadmin-data_ms_graph_gw:/var/lib/pgadmin
 
 configs:
   server-json:
@@ -44,4 +46,7 @@ configs:
         }
       }
 volumes:
-  postgres_data_ms_graph_gw:
+    postgres_data_ms_graph_gw  :
+      external: true
+    pgadmin-data_ms_graph_gw:
+      external: true
