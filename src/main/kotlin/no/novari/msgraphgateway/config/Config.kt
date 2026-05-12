@@ -63,8 +63,27 @@ open class Config {
                     val request = chain.request()
                     val response = chain.proceed(request)
 
-                    if (request.header("client-request-id") != response.header("client-request-id")) {
-                        log.error("client-request-id differs from the returned client-request-id")
+                    val requestClientId = request.header("client-request-id")
+                    val responseClientId = response.header("client-request-id")
+                    val responseRequestId = response.header("request-id")
+
+                    if (responseRequestId.isNullOrBlank()) {
+                        log.error("Missing request-id in Graph response (cannot correlate request!)")
+                    }
+
+                    if (requestClientId != null && responseClientId == null) {
+                        log.debug(
+                            "Graph did not return client-request-id. sent={} request-id={}",
+                            requestClientId,
+                            responseRequestId,
+                        )
+                    } else if (requestClientId != null && responseClientId != requestClientId) {
+                        log.debug(
+                            "client-request-id mismatch sent={} returned={} request-id={}",
+                            requestClientId,
+                            responseClientId,
+                            responseRequestId,
+                        )
                     }
 
                     val logMap =
@@ -77,9 +96,11 @@ open class Config {
                                     .query(null)
                                     .build()
                                     .toString(),
-                            "client-request-id" to request.header("client-request-id"),
-                            "request-id" to response.header("request-id"),
+                            "client-request-id" to requestClientId,
+                            "returned-client-request-id" to responseClientId,
+                            "request-id" to responseRequestId,
                             "date" to response.header("Date"),
+                            "status" to response.code,
                         )
 
                     log.debug(logMap.toString())
