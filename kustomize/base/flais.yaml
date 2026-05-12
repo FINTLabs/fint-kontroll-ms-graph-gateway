@@ -5,23 +5,19 @@ metadata:
   namespace: fintlabs-no
 spec:
   orgId: fintlabs.no
+  replicas: 1
   image: ghcr.io/fintlabs/fint-kontroll-ms-graph-gateway:latest
   imagePullPolicy: Always
-  url:
-    hostname: kontroll.vigo.no
-    basePath: /beta/fintlabs-no
-  ingress:
-    enabled: true
-    basePath: /beta/fintlabs-no/api
-    middlewares:
-      - fint-kontroll-sso
   env:
+    - name: "JAVA_TOOL_OPTIONS"
+      value: "-XX:+ExitOnOutOfMemoryError -Xmx2048m"
     - name: spring.kafka.consumer.group-id
       value: 'fint-kontroll-ms-graph-gateway'
     - name: fint.kontroll.authorization.authorized-role
       value: "https://role-catalog.vigoiks.no/vigo/kontroll/user"
     - name: fint.kontroll.authorization.authorized-org-id
       value: "vigo.no"
+
   envFrom:
     - secretRef:
         name: fint-kontroll-ms-graph-gateway
@@ -30,9 +26,13 @@ spec:
   kafka:
     enabled: true
     acls:
-      - topic: 'fintlabs-no.kontroll.*'
+      - topic: 'fintlabs-no.kontroll.entity.resource-group*'
         permission: read
-      - topic: 'fintlabs-no.kontroll.*'
+      - topic: 'fintlabs-no.kontroll.event.resource-group*'
+        permission: read
+      - topic: 'fintlabs-no.kontroll.entity.graph-*'
+        permission: admin
+      - topic: 'fintlabs-no.kontroll.event.graph-*'
         permission: admin
 
 
