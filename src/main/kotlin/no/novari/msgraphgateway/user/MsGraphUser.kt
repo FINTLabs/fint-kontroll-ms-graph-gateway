@@ -97,6 +97,7 @@ class MsGraphUser(
                             .delta()
                             .get { req ->
                                 req.headers.add("client-request-id", trackingId)
+                                req.headers.add("ConsistencyLevel", "eventual")
                                 req.queryParameters?.apply {
                                     select = selection
                                 }
@@ -204,6 +205,7 @@ class MsGraphUser(
                     .delta()
                     .get { req ->
                         req.headers.add("client-request-id", trackingId)
+                        req.headers.add("ConsistencyLevel", "eventual")
                         req.queryParameters?.select = selection
                     }
             }

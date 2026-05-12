@@ -1,9 +1,10 @@
-package no.novari.msgraphgateway.controller
+package no.novari.msgraphgateway.service
 
 import com.microsoft.graph.serviceclient.GraphServiceClient
 import com.microsoft.graph.users.item.getmembergroups.GetMemberGroupsPostRequestBody
 import no.novari.msgraphgateway.config.ConfigGroup
 import no.novari.msgraphgateway.config.ConfigUser
+import no.novari.msgraphgateway.dto.UserWithGroupsDto
 import no.novari.msgraphgateway.entra.EntraGroup
 import no.novari.msgraphgateway.entra.EntraUser
 import org.slf4j.LoggerFactory

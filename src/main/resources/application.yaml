@@ -14,18 +14,18 @@ spring:
                 jwt:
                     issuer-uri: https://idp.felleskomponent.no/nidp/oauth/nam
 server:
-    port: 8080
+  port: 8080
 
 logging:
-    pattern:
-        console: "%d{dd.MM.yyyy HH:mm:ss.SSSXXX} %highlight(%-9level) %logger{0} - %msg%n"
-    level:
-        com.azure: WARN
-        com.microsoft: WARN
-        org.apache: WARN
-        org.springframework.boot.autoconfigure.flyway: INFO
-        org.flywaydb: INFO
-        no.novari: DEBUG
+  pattern:
+    console: "%d{dd.MM.yyyy HH:mm:ss.SSSXXX} %highlight(%-9level) %logger{0} - %msg%n"
+  level:
+    com.azure: WARN
+    com.microsoft: WARN
+    org.apache: WARN
+    org.springframework.boot.autoconfigure.flyway: INFO
+    org.flywaydb: INFO
+    no.novari: INFO
 
 novari:
     application-id: fint-kontroll-ms-graph-gateway
@@ -43,6 +43,43 @@ novari:
                 initial-delay-ms: 10000
             full-import:
                 cron: 0 15 12 * * *
+        device:
+          delta:
+            fixed-delay-ms: 500000
+            initial-delay-ms: 1000
+          full-import:
+            cron: 0 0 12 * * *
+
+ms-graph:
+  user:
+    #Set variable user Attributes. Case sensitive. See User Object in Graph
+    use-same-id-num-attribute: false
+    user-id-num-attribute:
+    validator-attribute:
+    student-validator:
+    employee-validator:
+    employeeidattribute:
+    studentidattribute:
+    mainorgunitidattribute:
+    mainorgunitnameattribute:
+    enableexternalusers:
+    externaluserattribute:
+    externaluservalue:
+    userpagingsize: 999
+    stale-after-days: 21
+    accepted-deviation-percent: 5
+    min-not-seen-count: 7
+  group:
+    resource-group-id-attribute:
+    prefix: "-pre-"
+    suffix: "-suff-"
+    allow-group-update: false
+    allow-group-delete: false
+    unique-name-prefix:
+    group-paging-size: 999
+  device:
+    device-id-attribute:
+    device-paging-size: 999
 
 management:
     endpoints:

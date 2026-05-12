@@ -14,6 +14,7 @@ import io.mockk.mockk
 import io.mockk.spyk
 import io.mockk.verify
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import no.novari.msgraphgateway.config.ConfigUser
@@ -23,6 +24,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 
+@ExperimentalCoroutinesApi
 class MsGraphUserTest {
     private lateinit var configUser: ConfigUser
     private lateinit var deltaLinkStore: DeltaLinkStore

@@ -3,14 +3,11 @@ kind: Kustomization
 namespace: vlfk-no
 resources:
   - ../../../base
-commonLabels:
-  app.kubernetes.io/name: fint-kontroll-ms-graph-gateway
-  app.kubernetes.io/instance: fint-kontroll-ms-graph-gateway_vlfk-no
-  app.kubernetes.io/version: latest
-  app.kubernetes.io/component: backend
-  app.kubernetes.io/part-of: fint-kontroll
-  fintlabs.no/team: bas
-  fintlabs.no/org-id: vlfk.no
+labels:
+    - includeSelectors: true
+      pairs:
+          app.kubernetes.io/instance: fint-kontroll-ms-graph-gateway_vlfk-no
+          fintlabs.no/org-id: vlfk.no
 patches:
   - patch: |-
       - op: replace
@@ -18,10 +15,21 @@ patches:
         value: "vlfk.no"
       - op: replace
         path: "/spec/kafka/acls/0/topic"
-        value: "vlfk-no.kontroll.*"
+        value: "vlfk-no.kontroll.entity.resource-group*"
       - op: replace
         path: "/spec/kafka/acls/1/topic"
-        value: "vlfk-no.kontroll.*"
+        value: "vlfk-no.kontroll.event.resource-group*"
+      - op: replace
+        path: "/spec/kafka/acls/2/topic"
+        value: "vlfk-no.kontroll.entity.graph-*"
+      - op: replace
+        path: "/spec/kafka/acls/3/topic"
+        value: "vlfk-no.kontroll.event.graph-*"
+      - op: replace
+        path: "/spec/env/0"
+        value:
+            name: "JAVA_TOOL_OPTIONS"
+            value: "-XX:+ExitOnOutOfMemoryError -Xmx9984m"
       - op: add
         path: "/spec/resources"
         value: 
@@ -30,11 +38,7 @@ patches:
           requests:
             cpu: "500m"
             memory: "4Gi"
-      - op: add
-        path: "/spec/env/0"
-        value:
-          name: "JAVA_TOOL_OPTIONS"
-          value: "-XX:+ExitOnOutOfMemoryError -Xmx9984m"
+
     target:
       kind: Application
       name: fint-kontroll-ms-graph-gateway

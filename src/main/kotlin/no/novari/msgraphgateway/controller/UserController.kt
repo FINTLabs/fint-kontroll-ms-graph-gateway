@@ -1,6 +1,8 @@
 package no.novari.msgraphgateway.controller
 
 import no.fintlabs.util.OnlyDevelopers
+import no.novari.msgraphgateway.service.GroupService
+import no.novari.msgraphgateway.service.UserService
 import no.novari.msgraphgateway.user.MsGraphUser
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -16,14 +18,14 @@ data class TriggerResponse(
 )
 
 @RestController
-@RequestMapping("/api/admin")
+@RequestMapping("/api/admin/users")
 class UserController(
     private val groupService: GroupService,
     private val msGraphUser: MsGraphUser,
     private val userService: UserService,
 ) {
     @OnlyDevelopers
-    @GetMapping("/users/{objectId}")
+    @GetMapping("/{objectId}")
     fun getUserWithGroups(
         @PathVariable objectId: String,
     ): ResponseEntity<*> {
@@ -39,7 +41,7 @@ class UserController(
     }
 
     @OnlyDevelopers
-    @PostMapping("/users/full-sync")
+    @PostMapping("/full-sync")
     fun triggerUserFullSync(): ResponseEntity<TriggerResponse> {
         userService.triggerFullImport(false)
         return ResponseEntity
@@ -48,7 +50,7 @@ class UserController(
     }
 
     @OnlyDevelopers
-    @PostMapping("/users/delta-sync")
+    @PostMapping("/delta-sync")
     fun triggerUserDeltaSync(): ResponseEntity<TriggerResponse> {
         msGraphUser.pullAllUsersDelta()
         return ResponseEntity
@@ -57,7 +59,7 @@ class UserController(
     }
 
     @OnlyDevelopers
-    @PostMapping("/users/republish-and-full-sync")
+    @PostMapping("/republish-and-full-sync")
     fun triggerRepublishAndFullSync(): ResponseEntity<TriggerResponse> {
         userService.triggerFullImport(true)
         return ResponseEntity

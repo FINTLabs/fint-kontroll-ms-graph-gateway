@@ -1,4 +1,4 @@
-package no.novari.msgraphgateway.controller
+package no.novari.msgraphgateway.service
 
 import no.novari.msgraphgateway.user.MsGraphUser
 import org.springframework.stereotype.Service

@@ -1,4 +1,4 @@
-package no.novari.msgraphgateway.controller
+package no.novari.msgraphgateway.dto
 
 import no.novari.msgraphgateway.entra.EntraGroup
 import no.novari.msgraphgateway.entra.EntraUser

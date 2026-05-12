@@ -8,18 +8,17 @@ import no.novari.kafka.topic.configuration.EntityCleanupFrequency
 import no.novari.kafka.topic.configuration.EntityTopicConfiguration
 import no.novari.kafka.topic.name.EntityTopicNameParameters
 import no.novari.kafka.topic.name.TopicNamePrefixParameters
-import no.novari.msgraphgateway.entra.EntraUser
-import no.novari.msgraphgateway.entra.EntraUserPayload
+import no.novari.msgraphgateway.entra.EntraDevice
 import org.springframework.stereotype.Service
 import java.time.Duration
 
 @Service
-class UserProducerService(
+class EntraDeviceProducerService(
     private val parameterizedTemplateFactory: ParameterizedTemplateFactory,
     entityTopicService: EntityTopicService,
 ) {
-    private val entraUserTemplate: ParameterizedTemplate<EntraUserPayload> by lazy {
-        parameterizedTemplateFactory.createTemplate(EntraUserPayload::class.java)
+    private val entraDeviceTemplate: ParameterizedTemplate<EntraDevice> by lazy {
+        parameterizedTemplateFactory.createTemplate(EntraDevice::class.java)
     }
 
     private val entityTopicNameParameters: EntityTopicNameParameters
@@ -36,7 +35,7 @@ class UserProducerService(
             EntityTopicNameParameters
                 .builder()
                 .topicNamePrefixParameters(topicNamePrefixParameters)
-                .resourceName("graph-user")
+                .resourceName("graph-device")
                 .build()
 
         entityTopicService.createOrModifyTopic(
@@ -44,41 +43,32 @@ class UserProducerService(
             EntityTopicConfiguration
                 .stepBuilder()
                 .partitions(1)
-                .lastValueRetentionTime(Duration.ofDays(30))
+                .lastValueRetainedForever()
                 .nullValueRetentionTime(Duration.ofDays(7))
                 .cleanupFrequency(EntityCleanupFrequency.NORMAL)
                 .build(),
         )
     }
 
-    fun publish(entraUser: EntraUser) {
-        if (entraUser.employeeId == null && entraUser.studentId == null) {
-            log.warn("Skipping publishing user with no employee or student ID: ${entraUser.userPrincipalName}")
-            return
-        }
-
-        entraUserTemplate.send(
+    fun publish(entraDevice: EntraDevice) {
+        entraDeviceTemplate.send(
             ParameterizedProducerRecord
-                .builder<EntraUserPayload>()
+                .builder<EntraDevice>()
                 .topicNameParameters(entityTopicNameParameters)
-                .key(entraUser.userObjectId)
-                .value(entraUser.toPayload())
+                .key(entraDevice.deviceId)
+                .value(entraDevice)
                 .build(),
         )
     }
 
-    fun publishDeletedUser(userId: String) {
-        entraUserTemplate.send(
+    fun publishDeletedDevice(deviceId: String) {
+        entraDeviceTemplate.send(
             ParameterizedProducerRecord
-                .builder<EntraUserPayload>()
+                .builder<EntraDevice>()
                 .topicNameParameters(entityTopicNameParameters)
-                .key(userId)
+                .key(deviceId)
                 .value(null)
                 .build(),
         )
-    }
-
-    companion object {
-        private val log = org.slf4j.LoggerFactory.getLogger(UserProducerService::class.java)
     }
 }

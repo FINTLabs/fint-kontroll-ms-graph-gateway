@@ -3,6 +3,9 @@ package no.novari.msgraphgateway.controller
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import no.novari.msgraphgateway.dto.UserWithGroupsDto
+import no.novari.msgraphgateway.service.GroupService
+import no.novari.msgraphgateway.service.UserService
 import no.novari.msgraphgateway.user.MsGraphUser
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
