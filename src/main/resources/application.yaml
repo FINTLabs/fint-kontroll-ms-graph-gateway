@@ -43,6 +43,8 @@ novari:
                 initial-delay-ms: 10000
             full-import:
                 cron: 0 15 12 * * *
+            weekly-publish:
+                cron: 0 0 2 * * SUN
         device:
           delta:
             fixed-delay-ms: 500000
@@ -93,6 +95,5 @@ management:
         web:
             exposure:
                 include: "prometheus,health,info"
-
 
 

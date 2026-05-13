@@ -71,6 +71,7 @@ import java.util.concurrent.atomic.AtomicInteger
         "novari.scheduler.user.delta.initial-delay-ms=86400000",
         "novari.scheduler.user.delta.fixed-delay-ms=86400000",
         "novari.scheduler.user.full-import.cron=-",
+        "novari.scheduler.user.weekly-publish.cron=-",
         "ms-graph.membership.device.consumer-concurrency=1",
         "ms-graph.membership.device.consumer-max-poll-records=500",
         "ms-graph.membership.device.graph-batch-size=20",
