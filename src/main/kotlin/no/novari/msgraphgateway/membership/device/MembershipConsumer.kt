@@ -30,7 +30,7 @@ class MembershipConsumer(
     val topic: EventTopicNameParameters =
         EventTopicNameParameters
             .builder()
-            .eventName("kontroll-resource-group-membership-device")
+            .eventName("resource-group-membership-device")
             .topicNamePrefixParameters(
                 TopicNamePrefixParameters
                     .stepBuilder()

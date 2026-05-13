@@ -80,24 +80,19 @@ ms-graph:
   device:
     device-id-attribute:
     device-paging-size: 999
-
+  membership:
+      device:
+          consumer-concurrency: 12
+          consumer-max-poll-records: 500
+          graph-max-concurrent-calls: 3
+          graph-batch-size: 20
+          result-topic-partitions: 1
+          directory-objects-base-url: https://graph.microsoft.com/v1.0/directoryObjects/
 management:
     endpoints:
         web:
             exposure:
                 include: "prometheus,health,info"
 
-    membership:
-        device:
-            consumer-concurrency: 12
-            consumer-max-poll-records: 500
-            graph-max-concurrent-calls: 3
-            graph-batch-size: 20
-            result-topic-partitions: 1
-            directory-objects-base-url: https://graph.microsoft.com/v1.0/directoryObjects/
 
-management:
-    endpoints:
-        web:
-            exposure:
-                include: "prometheus,health,info"
+

@@ -12,6 +12,7 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
+import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.Response
 import org.apache.kafka.clients.consumer.ConsumerRecord
@@ -212,7 +213,15 @@ class MembershipServiceTest {
                 graphServiceClient = graphServiceClient,
                 entraMembershipProducer = entraMembershipProducer,
                 deviceMembershipEntityRepository = deviceMembershipEntityRepository,
-                properties = DeviceMembershipProcessingProperties(),
+                properties =
+                    DeviceMembershipProcessingProperties(
+                        consumerConcurrency = 1,
+                        consumerMaxPollRecords = 100,
+                        graphMaxConcurrentCalls = 3,
+                        graphBatchSize = 20,
+                        resultTopicPartitions = 1,
+                        directoryObjectsBaseUrl = "testUrl",
+                    ),
             )
     }
 
@@ -245,7 +254,7 @@ class MembershipServiceTest {
                             .Builder()
                             .url("https://graph.microsoft.com/v1.0/\$batch")
                             .build(),
-                    ).protocol(okhttp3.Protocol.HTTP_1_1)
+                    ).protocol(Protocol.HTTP_1_1)
                     .code(statusCode)
                     .message(error ?: "Graph status $statusCode")
                     .build()
