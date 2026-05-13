@@ -14,18 +14,18 @@ spring:
                 jwt:
                     issuer-uri: https://idp.felleskomponent.no/nidp/oauth/nam
 server:
-  port: 8080
+    port: 8080
 
 logging:
-  pattern:
-    console: "%d{dd.MM.yyyy HH:mm:ss.SSSXXX} %highlight(%-9level) %logger{0} - %msg%n"
-  level:
-    com.azure: WARN
-    com.microsoft: WARN
-    org.apache: WARN
-    org.springframework.boot.autoconfigure.flyway: INFO
-    org.flywaydb: INFO
-    no.novari: INFO
+    pattern:
+        console: "%d{dd.MM.yyyy HH:mm:ss.SSSXXX} %highlight(%-9level) %logger{0} - %msg%n"
+    level:
+        com.azure: WARN
+        com.microsoft: WARN
+        org.apache: WARN
+        org.springframework.boot.autoconfigure.flyway: INFO
+        org.flywaydb: INFO
+        no.novari: DEBUG
 
 novari:
     application-id: fint-kontroll-ms-graph-gateway
@@ -43,6 +43,8 @@ novari:
                 initial-delay-ms: 10000
             full-import:
                 cron: 0 15 12 * * *
+            weekly-publish:
+                cron: 0 0 2 * * SUN
         device:
           delta:
             fixed-delay-ms: 500000
@@ -80,10 +82,18 @@ ms-graph:
   device:
     device-id-attribute:
     device-paging-size: 999
-
+  membership:
+      device:
+          consumer-concurrency: 12
+          consumer-max-poll-records: 500
+          graph-max-concurrent-calls: 3
+          graph-batch-size: 20
+          result-topic-partitions: 1
+          directory-objects-base-url: https://graph.microsoft.com/v1.0/directoryObjects/
 management:
     endpoints:
         web:
             exposure:
                 include: "prometheus,health,info"
+
 
