@@ -1,21 +1,23 @@
-package no.novari.msgraphgateway.user
+@file:Suppress("ktlint:standard:no-wildcard-imports")
+
+package no.novari.msgraphgateway.device
 
 import no.novari.msgraphgateway.service.Checksum
 import java.time.Instant
 import java.util.*
 
-interface UserStateRepository {
+interface DeviceStateRepository {
     data class UpsertRow(
         val objectId: UUID,
         val checksum: Checksum,
         val lastSeenAt: Instant,
     )
 
+    fun batchUpsert(rows: List<UpsertRow>)
+
     fun findStaleObjectIds(cutoff: Instant): List<UUID>
 
     fun batchUpsertReturningChanged(rows: List<UpsertRow>): Set<UUID>
-
-    fun batchUpsert(rows: List<UpsertRow>)
 
     fun deleteById(objectId: UUID)
 

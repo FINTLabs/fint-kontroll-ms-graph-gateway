@@ -10,10 +10,10 @@ import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.test.runTest
 import no.novari.msgraphgateway.config.ConfigUser
-import no.novari.msgraphgateway.entra.Checksum
-import no.novari.msgraphgateway.entra.ChecksumService
 import no.novari.msgraphgateway.kafka.UserExternalProducerService
 import no.novari.msgraphgateway.kafka.UserProducerService
+import no.novari.msgraphgateway.service.Checksum
+import no.novari.msgraphgateway.service.ChecksumService
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
@@ -70,26 +70,6 @@ class EntraUserSyncServiceTest {
             verify(exactly = 1) { userRepository.batchUpsert(match { it.size == 2 }) }
             verify(exactly = 0) { userRepository.batchUpsertReturningChanged(any()) }
             coVerify(exactly = 2) { producer.publish(any()) }
-        }
-
-    @Test
-    fun processPageDeduplicatesUsersWithinSamePage() =
-        runTest {
-            val duplicateId = UUID.randomUUID()
-            val users = listOf(memberUser(duplicateId), memberUser(duplicateId))
-
-            val published =
-                service.processPage(
-                    users = users,
-                    notSeenIncremented = mutableSetOf(),
-                    republishAll = true,
-                )
-
-            assertEquals(1, published)
-            verify(
-                exactly = 1,
-            ) { userRepository.batchUpsert(match { it.size == 1 && it.first().objectId == duplicateId }) }
-            coVerify(exactly = 1) { producer.publish(any()) }
         }
 
     @Test

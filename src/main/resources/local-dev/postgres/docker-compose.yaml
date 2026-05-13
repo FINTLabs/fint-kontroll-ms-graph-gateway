@@ -1,6 +1,6 @@
 services:
   postgresql:
-    image: postgres:14.20
+    image: postgres:17.9
     environment:
       POSTGRES_DB: postgres
       POSTGRES_USER: msgraphuser
@@ -8,11 +8,11 @@ services:
     volumes:
       - postgres_data_ms_graph_gw:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - 5432:5432
     restart: unless-stopped
 
   pgadmin:
-    image: dpage/pgadmin4:9.13
+    image: dpage/pgadmin4:9.14
     ports:
       - 5480:80
     user: "5050"
@@ -26,6 +26,8 @@ services:
     configs:
       - source: server-json
         target: /pgadmin4/servers.json
+    volumes:
+        - pgadmin-data_ms_graph_gw:/var/lib/pgadmin
 
 configs:
   server-json:
@@ -44,4 +46,7 @@ configs:
         }
       }
 volumes:
-  postgres_data_ms_graph_gw:
+    postgres_data_ms_graph_gw  :
+      external: true
+    pgadmin-data_ms_graph_gw:
+      external: true

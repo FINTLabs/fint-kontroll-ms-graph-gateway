@@ -43,7 +43,50 @@ novari:
                 initial-delay-ms: 10000
             full-import:
                 cron: 0 15 12 * * *
+        device:
+          delta:
+            fixed-delay-ms: 500000
+            initial-delay-ms: 1000
+          full-import:
+            cron: 0 0 12 * * *
+
 ms-graph:
+  user:
+    #Set variable user Attributes. Case sensitive. See User Object in Graph
+    use-same-id-num-attribute: false
+    user-id-num-attribute:
+    validator-attribute:
+    student-validator:
+    employee-validator:
+    employeeidattribute:
+    studentidattribute:
+    mainorgunitidattribute:
+    mainorgunitnameattribute:
+    enableexternalusers:
+    externaluserattribute:
+    externaluservalue:
+    userpagingsize: 999
+    stale-after-days: 21
+    accepted-deviation-percent: 5
+    min-not-seen-count: 7
+  group:
+    resource-group-id-attribute:
+    prefix: "-pre-"
+    suffix: "-suff-"
+    allow-group-update: false
+    allow-group-delete: false
+    unique-name-prefix:
+    group-paging-size: 999
+  device:
+    device-id-attribute:
+    device-paging-size: 999
+
+management:
+    endpoints:
+        web:
+            exposure:
+                include: "prometheus,health,info"
+
     membership:
         device:
             consumer-concurrency: 12

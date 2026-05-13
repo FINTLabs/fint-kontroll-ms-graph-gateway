@@ -1,4 +1,4 @@
-package no.novari.msgraphgateway.entra
+package no.novari.msgraphgateway.service
 
 import com.fasterxml.jackson.annotation.JsonInclude
 import com.fasterxml.jackson.core.JsonProcessingException

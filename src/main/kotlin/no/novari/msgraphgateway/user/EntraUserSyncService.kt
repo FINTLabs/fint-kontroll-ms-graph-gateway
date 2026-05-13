@@ -5,18 +5,16 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import no.novari.msgraphgateway.config.ConfigUser
-import no.novari.msgraphgateway.entra.Checksum
-import no.novari.msgraphgateway.entra.ChecksumService
 import no.novari.msgraphgateway.entra.EntraUser
 import no.novari.msgraphgateway.entra.EntraUserExternal
 import no.novari.msgraphgateway.kafka.UserExternalProducerService
 import no.novari.msgraphgateway.kafka.UserProducerService
+import no.novari.msgraphgateway.service.Checksum
+import no.novari.msgraphgateway.service.ChecksumService
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.time.Instant
 import java.util.*
-
-private const val EXTERNAL_USERS = "external users"
 
 @Service
 class EntraUserSyncService(
@@ -26,8 +24,6 @@ class EntraUserSyncService(
     private val producer: UserProducerService,
     private val externalProducer: UserExternalProducerService,
     private val configUser: ConfigUser,
-    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
-    private val defaultDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) {
     private val batchSize = 1000
     private val checksumPermits = Semaphore(32)
@@ -60,7 +56,7 @@ class EntraUserSyncService(
             repo = userExternalRepository,
             cutoff = cutoff,
             publishDeleted = { id -> externalProducer.publishDeletedUser(id) },
-            label = EXTERNAL_USERS,
+            label = "external users",
         )
 
     private suspend fun finishFullImportFor(
@@ -70,7 +66,7 @@ class EntraUserSyncService(
         label: String,
     ): Int {
         val deletableIds =
-            withContext(ioDispatcher) {
+            withContext(Dispatchers.IO) {
                 repo.findStaleObjectIdsWithNotSeenCountGreaterThan(cutoff, configUser.minNotSeenCount)
             }
         log.info("Found {} stale {}", deletableIds.size, label)
@@ -79,7 +75,7 @@ class EntraUserSyncService(
         var deletedTotal = 0
         for (batch in deletableIds.chunked(batchSize)) {
             val deletedObjectIds =
-                withContext(ioDispatcher) {
+                withContext(Dispatchers.IO) {
                     repo.deleteByIdsReturningObjectIds(batch)
                 }
             deletedTotal += deletedObjectIds.size
@@ -87,7 +83,7 @@ class EntraUserSyncService(
             coroutineScope {
                 deletedObjectIds
                     .map { objectId ->
-                        async(ioDispatcher) {
+                        async(Dispatchers.IO) {
                             kafkaPermits.withPermit {
                                 publishDeleted(objectId.toString())
                             }
@@ -108,7 +104,7 @@ class EntraUserSyncService(
 
             val removedUsers = batch.filter { it.additionalData.containsKey("@removed") }
             if (removedUsers.isNotEmpty()) {
-                log.debug("There are {} removed users", removedUsers.size)
+                log.info("There are {} removed users", removedUsers.size)
                 removedUsers.forEach { u ->
                     handleRemoved(u.id, notSeenIncremented)
                 }
@@ -153,7 +149,7 @@ class EntraUserSyncService(
                         toDto = { u -> EntraUserExternal(u, configUser) },
                         publish = { dto -> externalProducer.publish(dto) },
                         checksum = { dto -> checksumService.checksum(dto) },
-                        logLabel = EXTERNAL_USERS,
+                        logLabel = "external users",
                     )
                 publishedUsers + publishedExternal
             } else {
@@ -176,7 +172,7 @@ class EntraUserSyncService(
                         toDto = { u -> EntraUserExternal(u, configUser) },
                         publish = { dto -> externalProducer.publish(dto) },
                         checksum = { dto -> checksumService.checksum(dto) },
-                        logLabel = EXTERNAL_USERS,
+                        logLabel = "external users",
                     )
                 publishedUsers + publishedExternal
             }
@@ -204,7 +200,7 @@ class EntraUserSyncService(
 
             val changedIds: Set<UUID> =
                 dbBatchPermits.withPermit {
-                    withContext(ioDispatcher) {
+                    withContext(Dispatchers.IO) {
                         repo.batchUpsertReturningChanged(prepared.rows)
                     }
                 }
@@ -216,7 +212,7 @@ class EntraUserSyncService(
             val jobs =
                 changedIds.mapNotNull { id ->
                     val dto = prepared.dtoById[id] ?: return@mapNotNull null
-                    async(ioDispatcher) {
+                    async(Dispatchers.IO) {
                         runCatching {
                             kafkaPermits.withPermit {
                                 publish(dto)
@@ -249,14 +245,14 @@ class EntraUserSyncService(
                 )
 
             dbBatchPermits.withPermit {
-                withContext(ioDispatcher) {
+                withContext(Dispatchers.IO) {
                     repo.batchUpsert(prepared.rows)
                 }
             }
             val jobs =
                 prepared.rows.mapNotNull { row ->
                     val dto = prepared.dtoById[row.objectId] ?: return@mapNotNull null
-                    async(ioDispatcher) {
+                    async(Dispatchers.IO) {
                         runCatching {
                             kafkaPermits.withPermit {
                                 publish(dto)
@@ -281,21 +277,21 @@ class EntraUserSyncService(
         }
 
         val existsInUsers =
-            runCatching { withContext(ioDispatcher) { userRepository.existsById(objectId) } }
+            runCatching { withContext(Dispatchers.IO) { userRepository.existsById(objectId) } }
                 .getOrDefault(false)
 
         val existsInExternal =
-            runCatching { withContext(ioDispatcher) { userExternalRepository.existsById(objectId) } }
+            runCatching { withContext(Dispatchers.IO) { userExternalRepository.existsById(objectId) } }
                 .getOrDefault(false)
 
         when {
             existsInUsers -> {
-                withContext(ioDispatcher) { userRepository.incrementNotSeenCount(listOf(objectId)) }
+                withContext(Dispatchers.IO) { userRepository.incrementNotSeenCount(listOf(objectId)) }
                 log.debug("Marked user {} as not seen (+1) in users due to @removed", objectId)
             }
 
             existsInExternal -> {
-                withContext(ioDispatcher) { userExternalRepository.incrementNotSeenCount(listOf(objectId)) }
+                withContext(Dispatchers.IO) { userExternalRepository.incrementNotSeenCount(listOf(objectId)) }
                 log.debug("Marked user {} as not seen (+1) in users_external due to @removed", objectId)
             }
 
@@ -321,7 +317,7 @@ class EntraUserSyncService(
             val computed: List<Computed<DTO>> =
                 candidates
                     .map { (id, u) ->
-                        async(defaultDispatcher) {
+                        async(Dispatchers.Default) {
                             val dto = toDto(u)
                             checksumPermits.withPermit {
                                 Computed(id, dto, checksum(dto))
