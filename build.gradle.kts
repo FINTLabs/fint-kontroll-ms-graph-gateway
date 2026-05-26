@@ -56,11 +56,30 @@ dependencies {
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test")
     testImplementation("io.mockk:mockk:1.13.10")
     testImplementation("org.jetbrains.kotlin:kotlin-reflect")
+    testImplementation("org.testcontainers:junit-jupiter:1.19.7")
+    testImplementation("org.testcontainers:kafka:1.19.7")
+    testImplementation("org.testcontainers:postgresql:1.19.7")
+    testImplementation("org.wiremock:wiremock:3.13.2")
 }
 
 tasks.named<Test>("test") {
-    useJUnitPlatform()
+    useJUnitPlatform {
+        excludeTags("manual")
+    }
     jvmArgs("-XX:+EnableDynamicAgentLoading")
+}
+tasks.register<Test>("integrationTests") {
+    description = "Runs tests tagged as manual"
+    group = "verification"
+    maxHeapSize = "2g"
+    val testSourceSet = sourceSets.test.get()
+
+    useJUnitPlatform {
+        includeTags("manual")
+    }
+
+    testClassesDirs = testSourceSet.output.classesDirs
+    classpath = testSourceSet.runtimeClasspath
 }
 
 ktlint {

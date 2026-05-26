@@ -142,6 +142,11 @@ class MsGraphUser(
         requestFullImport(false)
     }
 
+    @Scheduled(cron = $$"${novari.scheduler.user.weekly-publish.cron}")
+    fun weeklyPublishUsers() {
+        requestFullImport(true)
+    }
+
     fun requestFullImport(republishAll: Boolean = false) {
         fullImportRequested.set(true)
         if (republishAll) {

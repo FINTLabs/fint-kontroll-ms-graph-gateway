@@ -132,6 +132,17 @@ class MsGraphUserTest {
         }
 
     @Test
+    fun weeklyPublishUsersRequestsFullImportWithRepublishAll() =
+        runBlocking {
+            val msGraphUser = spyk(createMsGraphUser())
+            coEvery { msGraphUser.startFullImport(any()) } returns Unit
+
+            msGraphUser.weeklyPublishUsers()
+
+            coVerify(timeout = 2_000, exactly = 1) { msGraphUser.startFullImport(true) }
+        }
+
+    @Test
     fun pullAllUsersDeltaDoesNotStartSecondRunWhileFirstIsRunning(): Unit =
         runBlocking {
             val firstRunStarted = CompletableDeferred<Unit>()
