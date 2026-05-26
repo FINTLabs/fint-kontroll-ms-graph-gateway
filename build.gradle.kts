@@ -50,7 +50,7 @@ dependencies {
 
     // Microsoft Graph SDK (Java)
     implementation("com.microsoft.graph:microsoft-graph:6.20.0")
-    implementation("com.azure:azure-identity:1.18.2")
+    implementation("com.azure:azure-identity:1.18.3")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test")
