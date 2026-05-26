@@ -1,6 +1,7 @@
 services:
   kafka:
     image: apache/kafka:3.8.1
+    container_name: kafka
     ports:
       - "9092:9092"
     environment:
@@ -20,6 +21,7 @@ services:
 
   kafdrop:
     image: obsidiandynamics/kafdrop:4.2.0
+    container_name: kafdrop
     restart: "no"
     ports:
       - "9000:9000"
