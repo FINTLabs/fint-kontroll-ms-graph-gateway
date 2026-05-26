@@ -1,3 +1,5 @@
+name: ms-graph-gw
+
 include:
-  - kafka/docker-compose.yaml
-  - postgres/docker-compose.yaml
+  - kafka.yaml
+  - postgres.yaml
