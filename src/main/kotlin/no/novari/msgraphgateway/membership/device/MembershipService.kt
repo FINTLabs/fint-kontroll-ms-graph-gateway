@@ -42,7 +42,8 @@ class MembershipService(
             return
         }
 
-        log.info("Received membership batch with {} records", records.size)
+        val correlationId = UUID.randomUUID().toString()
+        log.info("Received membership batch with {} records (correlationId={})", records.size, correlationId)
         val validMemberships = mutableListOf<ParsedMembership>()
         val pendingMemberships = mutableListOf<PendingMembership>()
         val statesToSave = mutableListOf<DeviceMembershipEntity>()
@@ -60,12 +61,20 @@ class MembershipService(
                 log.warn("Received null membership for key: {}", messageKey)
                 return@forEach
             }
+            log.trace(
+                "Received membership record (correlationId={}, messageKey={}, operation={}, deviceRef={}, groupRef={})",
+                correlationId,
+                messageKey,
+                membership.operation,
+                membership.entraDeviceRef,
+                membership.entraGroupRef,
+            )
 
             validMemberships +=
                 ParsedMembership(
                     messageKey,
                     membership,
-                    parseMembershipId(membership, messageKey) ?: return@forEach,
+                    parseMembershipId(membership, messageKey, correlationId) ?: return@forEach,
                 )
         }
 
@@ -87,12 +96,21 @@ class MembershipService(
                 statesToSave += buildMembershipState(parsed.membershipId, existing, newMembershipStatus)
                 resultsToPublish += MembershipResult(parsed.messageKey, parsed.membership, kafkaStatus)
                 log.debug(
-                    "Skipped duplicate membership operation {} for device {} and group {}",
+                    "Skipped duplicate membership operation {} for device {} and group {} (correlationId={})",
+                    parsed.membership.operation,
+                    parsed.membership.entraDeviceRef,
+                    parsed.membership.entraGroupRef,
+                    correlationId,
+                )
+            } else {
+                log.trace(
+                    "Queued membership operation for Graph (correlationId={}, messageKey={}, operation={}, deviceRef={}, groupRef={})",
+                    correlationId,
+                    parsed.messageKey,
                     parsed.membership.operation,
                     parsed.membership.entraDeviceRef,
                     parsed.membership.entraGroupRef,
                 )
-            } else {
                 pendingMemberships +=
                     PendingMembership(
                         parsed.messageKey,
@@ -105,11 +123,21 @@ class MembershipService(
 
         val resolvedResults =
             runBlocking {
-                processPendingMemberships(pendingMemberships)
+                processPendingMemberships(pendingMemberships, correlationId)
             }
 
         resolvedResults.forEach { result ->
             val persistedStatus = getNewMembershipStatus(result.pending.membership.operation, result.status)
+            log.trace(
+                "Resolved membership operation (correlationId={}, messageKey={}, operation={}, deviceRef={}, groupRef={}, graphStatus={}, persistedStatus={})",
+                correlationId,
+                result.pending.messageKey,
+                result.pending.membership.operation,
+                result.pending.membership.entraDeviceRef,
+                result.pending.membership.entraGroupRef,
+                result.status,
+                persistedStatus,
+            )
             statesToSave +=
                 buildMembershipState(
                     result.pending.membershipId,
@@ -119,20 +147,35 @@ class MembershipService(
             resultsToPublish += MembershipResult(result.pending.messageKey, result.pending.membership, result.status)
         }
 
+        log.debug(
+            "Saving {} membership states and publishing {} membership results (correlationId={})",
+            statesToSave.size,
+            resultsToPublish.size,
+            correlationId,
+        )
         deviceMembershipEntityRepository.saveAll(statesToSave)
 
         resultsToPublish.forEach { result ->
-            publishResult(result.messageKey, result.membership, result.status)
+            publishResult(result.messageKey, result.membership, result.status, correlationId)
         }
     }
 
-    private fun processGraphBatchChunkWithRetries(chunk: List<PendingMembership>): List<ResolvedBatchResult> {
+    private fun processGraphBatchChunkWithRetries(
+        chunk: List<PendingMembership>,
+        correlationId: String,
+    ): List<ResolvedBatchResult> {
         var failed = chunk
         var retryCount = 0
         val resolved = mutableListOf<ResolvedBatchResult>()
 
         while (failed.isNotEmpty()) {
-            val statusesByMembership = executeGraphBatch(failed)
+            log.trace(
+                "Executing membership Graph batch chunk (correlationId={}, size={}, retryCount={})",
+                correlationId,
+                failed.size,
+                retryCount,
+            )
+            val statusesByMembership = executeGraphBatch(failed, correlationId)
             val toRetry = mutableListOf<PendingMembership>()
 
             failed.forEach { pending ->
@@ -150,10 +193,11 @@ class MembershipService(
 
             retryCount++
             log.warn(
-                "Batch membership operations failed, retrying {} records ({}/{})",
+                "Batch membership operations failed, retrying {} records ({}/{}) (correlationId={})",
                 toRetry.size,
                 retryCount,
                 MAX_RETRIES,
+                correlationId,
             )
             failed = toRetry
         }
@@ -163,6 +207,7 @@ class MembershipService(
 
     private suspend fun processPendingMemberships(
         pendingMemberships: List<PendingMembership>,
+        correlationId: String,
     ): List<ResolvedBatchResult> {
         if (pendingMemberships.isEmpty()) {
             return emptyList()
@@ -172,6 +217,13 @@ class MembershipService(
         val resolvedByChunk = Array<List<ResolvedBatchResult>?>(chunks.size) { null }
         val nextChunkIndex = AtomicInteger(0)
         val workerCount = minOf(properties.graphMaxConcurrentCalls, chunks.size)
+        log.debug(
+            "Processing {} pending membership operations in {} Graph chunks with {} workers (correlationId={})",
+            pendingMemberships.size,
+            chunks.size,
+            workerCount,
+            correlationId,
+        )
 
         coroutineScope {
             List(workerCount) {
@@ -182,7 +234,8 @@ class MembershipService(
                             return@async
                         }
 
-                        resolvedByChunk[chunkIndex] = processGraphBatchChunkWithRetries(chunks[chunkIndex])
+                        resolvedByChunk[chunkIndex] =
+                            processGraphBatchChunkWithRetries(chunks[chunkIndex], correlationId)
                     }
                 }
             }.awaitAll()
@@ -191,51 +244,86 @@ class MembershipService(
         return resolvedByChunk.filterNotNull().flatten()
     }
 
-    private fun executeGraphBatch(memberships: List<PendingMembership>): Map<PendingMembership, EntraStatus> {
+    private fun executeGraphBatch(
+        memberships: List<PendingMembership>,
+        correlationId: String,
+    ): Map<PendingMembership, EntraStatus> {
         val batchRequestContent = BatchRequestContent(graphServiceClient)
         val stepIdToMembership = linkedMapOf<String, PendingMembership>()
 
         memberships.forEach { membership ->
-            val stepId = batchRequestContent.addBatchRequestStep(buildRequest(membership.membership))
+            val stepId = batchRequestContent.addBatchRequestStep(buildRequest(membership.membership, correlationId))
             stepIdToMembership[stepId] = membership
+            log.trace(
+                "Added membership Graph batch step (correlationId={}, stepId={}, operation={}, deviceRef={}, groupRef={})",
+                correlationId,
+                stepId,
+                membership.membership.operation,
+                membership.membership.entraDeviceRef,
+                membership.membership.entraGroupRef,
+            )
         }
 
+        val startTimeMs = System.currentTimeMillis()
         val batchResponse =
             try {
                 graphServiceClient.batchRequestBuilder.post(batchRequestContent, null)
             } catch (e: IOException) {
-                log.error("I/O error while executing membership batch request", e)
+                logGraphBatchFailure("I/O error", correlationId, memberships.size, startTimeMs, e)
                 return memberships.associateWith { EntraStatus.FAILED }
             } catch (e: Exception) {
-                log.error("Unexpected error while executing membership batch request", e)
+                logGraphBatchFailure("Unexpected error", correlationId, memberships.size, startTimeMs, e)
                 return memberships.associateWith { EntraStatus.FAILED }
             }
+        log.debug(
+            "Membership Graph batch completed (correlationId={}, size={}, elapsedMs={})",
+            correlationId,
+            memberships.size,
+            System.currentTimeMillis() - startTimeMs,
+        )
 
         val responseStatusCodes = batchResponse.responsesStatusCode.toMap()
         return stepIdToMembership.entries.associate { (stepId, membership) ->
             val statusCode = responseStatusCodes[stepId]
             if (statusCode == null) {
                 log.error(
-                    "Missing batch response status for stepId {} (device {}, group {})",
+                    "Missing batch response status for stepId {} (correlationId={}, deviceRef={}, groupRef={})",
                     stepId,
+                    correlationId,
                     membership.membership.entraDeviceRef,
                     membership.membership.entraGroupRef,
                 )
                 membership to EntraStatus.FAILED
             } else {
                 val error = readMessage(batchResponse, stepId, statusCode)
+                log.trace(
+                    "Received membership Graph batch step response (correlationId={}, stepId={}, statusCode={}, operation={}, deviceRef={}, groupRef={}, error={})",
+                    correlationId,
+                    stepId,
+                    statusCode,
+                    membership.membership.operation,
+                    membership.membership.entraDeviceRef,
+                    membership.membership.entraGroupRef,
+                    error,
+                )
                 membership to toEntraStatus(membership.membership, statusCode, error)
             }
         }
     }
 
-    private fun buildRequest(membership: DeviceResourceGroupMembership): RequestInformation =
+    private fun buildRequest(
+        membership: DeviceResourceGroupMembership,
+        correlationId: String,
+    ): RequestInformation =
         when (membership.operation) {
-            OperationType.ADD -> buildAddRequest(membership)
-            OperationType.REMOVE -> buildRemoveRequest(membership)
+            OperationType.ADD -> buildAddRequest(membership, correlationId)
+            OperationType.REMOVE -> buildRemoveRequest(membership, correlationId)
         }
 
-    private fun buildAddRequest(membership: DeviceResourceGroupMembership): RequestInformation {
+    private fun buildAddRequest(
+        membership: DeviceResourceGroupMembership,
+        correlationId: String,
+    ): RequestInformation {
         val referenceMember = ReferenceCreate()
         referenceMember.odataId = properties.directoryObjectsBaseUrl + membership.entraDeviceRef
         return graphServiceClient
@@ -244,9 +332,13 @@ class MembershipService(
             .members()
             .ref()
             .toPostRequestInformation(referenceMember)
+            .withClientRequestId(correlationId)
     }
 
-    private fun buildRemoveRequest(membership: DeviceResourceGroupMembership): RequestInformation =
+    private fun buildRemoveRequest(
+        membership: DeviceResourceGroupMembership,
+        correlationId: String,
+    ): RequestInformation =
         graphServiceClient
             .groups()
             .byGroupId(membership.entraGroupRef)
@@ -254,6 +346,29 @@ class MembershipService(
             .byDirectoryObjectId(membership.entraDeviceRef)
             .ref()
             .toDeleteRequestInformation()
+            .withClientRequestId(correlationId)
+
+    private fun RequestInformation.withClientRequestId(correlationId: String): RequestInformation =
+        apply {
+            headers.add("client-request-id", correlationId)
+        }
+
+    private fun logGraphBatchFailure(
+        reason: String,
+        correlationId: String,
+        size: Int,
+        startTimeMs: Long,
+        exception: Exception,
+    ) {
+        log.error(
+            "{} while executing membership Graph batch request (correlationId={}, size={}, elapsedMs={})",
+            reason,
+            correlationId,
+            size,
+            System.currentTimeMillis() - startTimeMs,
+            exception,
+        )
+    }
 
     private fun readMessage(
         batchResponse: BatchResponseContent,
@@ -372,6 +487,7 @@ class MembershipService(
     private fun parseMembershipId(
         membership: DeviceResourceGroupMembership,
         messageKey: String,
+        correlationId: String,
     ): DeviceMembershipId? =
         try {
             DeviceMembershipId(
@@ -385,7 +501,7 @@ class MembershipService(
                 membership.entraDeviceRef,
                 membership.entraGroupRef,
             )
-            publishResult(messageKey, membership, EntraStatus.ERROR)
+            publishResult(messageKey, membership, EntraStatus.ERROR, correlationId)
             return null
         }
 
@@ -435,6 +551,7 @@ class MembershipService(
         messageKey: String,
         membership: DeviceResourceGroupMembership,
         status: EntraStatus,
+        correlationId: String,
     ) {
         val entraDeviceMembership =
             EntraDeviceMembership(
@@ -442,6 +559,14 @@ class MembershipService(
                 membership.entraGroupRef,
                 membership.entraDeviceRef,
             )
+        log.trace(
+            "Publishing membership result (correlationId={}, messageKey={}, status={}, deviceRef={}, groupRef={})",
+            correlationId,
+            messageKey,
+            status,
+            membership.entraDeviceRef,
+            membership.entraGroupRef,
+        )
         entraMembershipProducer.publish(messageKey, entraDeviceMembership)
     }
 

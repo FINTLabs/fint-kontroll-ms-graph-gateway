@@ -34,11 +34,12 @@ class EntraUserSyncService(
         users: List<User>?,
         notSeenIncremented: MutableSet<UUID>,
         republishAll: Boolean,
+        correlationId: String? = null,
     ): Int {
         if (users.isNullOrEmpty()) return 0
         var publishedTotal = 0
         for (batch in users.chunked(batchSize)) {
-            publishedTotal += processBatch(batch, notSeenIncremented, republishAll)
+            publishedTotal += processBatch(batch, notSeenIncremented, republishAll, correlationId)
         }
         return publishedTotal
     }
@@ -85,7 +86,14 @@ class EntraUserSyncService(
                     .map { objectId ->
                         async(Dispatchers.IO) {
                             kafkaPermits.withPermit {
-                                publishDeleted(objectId.toString())
+                                runCatching {
+                                    log.trace("Publishing deleted {} event (entraId={})", label, objectId)
+                                    publishDeleted(objectId.toString())
+                                }.onSuccess {
+                                    log.trace("Published deleted {} event (entraId={})", label, objectId)
+                                }.onFailure {
+                                    log.warn("Failed publishing deleted {} event (entraId={})", label, objectId, it)
+                                }.getOrThrow()
                             }
                         }
                     }.awaitAll()
@@ -98,14 +106,27 @@ class EntraUserSyncService(
         batch: List<User>,
         notSeenIncremented: MutableSet<UUID>,
         republishAll: Boolean,
+        correlationId: String?,
     ): Int =
         coroutineScope {
             val now = Instant.now()
+            log.trace(
+                "Processing user batch (correlationId={}, size={}, republishAll={}, entraIds={})",
+                correlationId,
+                batch.size,
+                republishAll,
+                batch.mapNotNull { it.id }.joinToString(","),
+            )
 
             val removedUsers = batch.filter { it.additionalData.containsKey("@removed") }
             if (removedUsers.isNotEmpty()) {
                 log.info("There are {} removed users", removedUsers.size)
                 removedUsers.forEach { u ->
+                    log.trace(
+                        "Received removed user from Microsoft Graph (correlationId={}, entraId={})",
+                        correlationId,
+                        u.id,
+                    )
                     handleRemoved(u.id, notSeenIncremented)
                 }
             }
@@ -114,9 +135,28 @@ class EntraUserSyncService(
                 batch
                     .asSequence()
                     .filter { !it.additionalData.containsKey("@removed") }
-                    .filter { it.userType?.equals("member", ignoreCase = true) ?: false }
-                    .mapNotNull { u ->
-                        val id = parseObjectIdOrNull(u.id) ?: return@mapNotNull null
+                    .filter { u ->
+                        val isMember = u.userType?.equals("member", ignoreCase = true) ?: false
+                        if (!isMember) {
+                            log.trace(
+                                "Skipping non-member user from Microsoft Graph (correlationId={}, entraId={}, userType={})",
+                                correlationId,
+                                u.id,
+                                u.userType,
+                            )
+                        }
+                        isMember
+                    }.mapNotNull { u ->
+                        val id =
+                            parseObjectIdOrNull(u.id)
+                                ?: run {
+                                    log.warn(
+                                        "Skipping user with invalid Entra ID from Microsoft Graph (correlationId={}, entraId={})",
+                                        correlationId,
+                                        u.id,
+                                    )
+                                    return@mapNotNull null
+                                }
                         id to u
                     }.distinctBy { it.first }
                     .toList()
@@ -127,7 +167,13 @@ class EntraUserSyncService(
             val normals = ArrayList<Pair<UUID, User>>()
 
             for ((id, u) in candidates) {
-                if (isExternal(u)) externals += id to u else normals += id to u
+                if (isExternal(u)) {
+                    log.trace("Classified user as external (correlationId={}, entraId={})", correlationId, id)
+                    externals += id to u
+                } else {
+                    log.trace("Classified user as internal (correlationId={}, entraId={})", correlationId, id)
+                    normals += id to u
+                }
             }
             if (republishAll) {
                 val publishedUsers =
@@ -139,6 +185,7 @@ class EntraUserSyncService(
                         publish = { dto -> producer.publish(dto) },
                         checksum = { dto -> checksumService.checksum(dto) },
                         logLabel = "users",
+                        correlationId = correlationId,
                     )
 
                 val publishedExternal =
@@ -150,6 +197,7 @@ class EntraUserSyncService(
                         publish = { dto -> externalProducer.publish(dto) },
                         checksum = { dto -> checksumService.checksum(dto) },
                         logLabel = "external users",
+                        correlationId = correlationId,
                     )
                 publishedUsers + publishedExternal
             } else {
@@ -162,6 +210,7 @@ class EntraUserSyncService(
                         publish = { dto -> producer.publish(dto) },
                         checksum = { dto -> checksumService.checksum(dto) },
                         logLabel = "users",
+                        correlationId = correlationId,
                     )
 
                 val publishedExternal =
@@ -173,6 +222,7 @@ class EntraUserSyncService(
                         publish = { dto -> externalProducer.publish(dto) },
                         checksum = { dto -> checksumService.checksum(dto) },
                         logLabel = "external users",
+                        correlationId = correlationId,
                     )
                 publishedUsers + publishedExternal
             }
@@ -186,6 +236,7 @@ class EntraUserSyncService(
         checksum: (DTO) -> Checksum,
         publish: suspend (DTO) -> Unit,
         logLabel: String,
+        correlationId: String?,
     ): Int =
         coroutineScope {
             if (candidates.isEmpty()) return@coroutineScope 0
@@ -196,6 +247,8 @@ class EntraUserSyncService(
                     candidates = candidates,
                     toDto = toDto,
                     checksum = checksum,
+                    correlationId = correlationId,
+                    logLabel = logLabel,
                 )
 
             val changedIds: Set<UUID> =
@@ -213,11 +266,14 @@ class EntraUserSyncService(
                 changedIds.mapNotNull { id ->
                     val dto = prepared.dtoById[id] ?: return@mapNotNull null
                     async(Dispatchers.IO) {
-                        runCatching {
-                            kafkaPermits.withPermit {
-                                publish(dto)
-                            }
-                        }.onFailure { log.warn("Failed publishing {} {}", logLabel, id, it) }
+                        publishWithLogging(
+                            action = "changed",
+                            logLabel = logLabel,
+                            correlationId = correlationId,
+                            entraId = id,
+                            dto = dto,
+                            publish = publish,
+                        )
                     }
                 }
 
@@ -232,6 +288,7 @@ class EntraUserSyncService(
         checksum: (DTO) -> Checksum,
         publish: suspend (DTO) -> Unit,
         logLabel: String,
+        correlationId: String?,
     ): Int =
         coroutineScope {
             if (candidates.isEmpty()) return@coroutineScope 0
@@ -242,6 +299,8 @@ class EntraUserSyncService(
                     candidates = candidates,
                     toDto = toDto,
                     checksum = checksum,
+                    correlationId = correlationId,
+                    logLabel = logLabel,
                 )
 
             dbBatchPermits.withPermit {
@@ -253,11 +312,14 @@ class EntraUserSyncService(
                 prepared.rows.mapNotNull { row ->
                     val dto = prepared.dtoById[row.objectId] ?: return@mapNotNull null
                     async(Dispatchers.IO) {
-                        runCatching {
-                            kafkaPermits.withPermit {
-                                publish(dto)
-                            }
-                        }.onFailure { log.warn("Failed publishing {} {}", logLabel, row.objectId, it) }
+                        publishWithLogging(
+                            action = "republishAll",
+                            logLabel = logLabel,
+                            correlationId = correlationId,
+                            entraId = row.objectId,
+                            dto = dto,
+                            publish = publish,
+                        )
                     }
                 }
 
@@ -269,7 +331,12 @@ class EntraUserSyncService(
         notSeenIncremented: MutableSet<UUID>,
     ) {
         if (userId.isNullOrBlank()) return
-        val objectId = parseObjectIdOrNull(userId) ?: return
+        val objectId =
+            parseObjectIdOrNull(userId)
+                ?: run {
+                    log.warn("Skipping removed user with invalid Entra ID (entraId={})", userId)
+                    return
+                }
 
         if (!notSeenIncremented.add(objectId)) {
             log.debug("Removed user {} already marked not seen in this run; skipping", objectId)
@@ -306,6 +373,8 @@ class EntraUserSyncService(
         candidates: List<Pair<UUID, User>>,
         toDto: (User) -> DTO,
         checksum: (DTO) -> Checksum,
+        correlationId: String?,
+        logLabel: String,
     ): PreparedBatch<DTO> =
         coroutineScope {
             data class Computed<DTO>(
@@ -318,10 +387,33 @@ class EntraUserSyncService(
                 candidates
                     .map { (id, u) ->
                         async(Dispatchers.Default) {
-                            val dto = toDto(u)
-                            checksumPermits.withPermit {
-                                Computed(id, dto, checksum(dto))
-                            }
+                            runCatching {
+                                log.trace(
+                                    "Preparing {} for upsert (correlationId={}, entraId={})",
+                                    logLabel,
+                                    correlationId,
+                                    id,
+                                )
+                                val dto = toDto(u)
+                                checksumPermits.withPermit {
+                                    Computed(id, dto, checksum(dto))
+                                }
+                            }.onSuccess {
+                                log.trace(
+                                    "Prepared {} for upsert (correlationId={}, entraId={})",
+                                    logLabel,
+                                    correlationId,
+                                    id,
+                                )
+                            }.onFailure {
+                                log.warn(
+                                    "Failed preparing {} for upsert (correlationId={}, entraId={})",
+                                    logLabel,
+                                    correlationId,
+                                    id,
+                                    it,
+                                )
+                            }.getOrThrow()
                         }
                     }.awaitAll()
 
@@ -331,9 +423,48 @@ class EntraUserSyncService(
             for (c in computed) {
                 rows += UserStateRepository.UpsertRow(c.id, c.checksum, now)
                 dtoById[c.id] = c.dto
+                log.trace("Prepared DB upsert row for {} (correlationId={}, entraId={})", logLabel, correlationId, c.id)
             }
 
             PreparedBatch(rows = rows, dtoById = dtoById)
+        }
+
+    private suspend fun <DTO : Any> publishWithLogging(
+        action: String,
+        logLabel: String,
+        correlationId: String?,
+        entraId: UUID,
+        dto: DTO,
+        publish: suspend (DTO) -> Unit,
+    ): Result<Unit> =
+        runCatching {
+            log.trace(
+                "Publishing {} {} (correlationId={}, entraId={})",
+                action,
+                logLabel,
+                correlationId,
+                entraId,
+            )
+            kafkaPermits.withPermit {
+                publish(dto)
+            }
+        }.onSuccess {
+            log.trace(
+                "Published {} {} (correlationId={}, entraId={})",
+                action,
+                logLabel,
+                correlationId,
+                entraId,
+            )
+        }.onFailure {
+            log.warn(
+                "Failed publishing {} {} (correlationId={}, entraId={})",
+                action,
+                logLabel,
+                correlationId,
+                entraId,
+                it,
+            )
         }
 
     private data class PreparedBatch<DTO : Any>(

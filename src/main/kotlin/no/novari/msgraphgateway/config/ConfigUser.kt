@@ -44,16 +44,6 @@ class ConfigUser {
     var acceptedDeviationPercent: Int? = null
     var minNotSeenCount: Int = 7
 
-    @PostConstruct
-    fun dumpConfig() {
-        val log = LoggerFactory.getLogger(ConfigUser::class.java)
-        log.info("useSameIdNumAttribute={}", useSameIdNumAttribute)
-        log.info("employeeidattribute={}", employeeidattribute)
-        log.info("studentidattribute={}", studentidattribute)
-        log.info("userIdNumAttribute={}", userIdNumAttribute)
-        log.info("validatorAttribute={}", validatorAttribute)
-    }
-
     fun allAttributes(): List<String> {
         val allAttributes = mutableListOf<String>()
 

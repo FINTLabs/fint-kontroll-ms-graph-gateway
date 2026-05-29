@@ -69,15 +69,15 @@ class MsGraphUser(
             }
 
             val startTime = System.currentTimeMillis()
-            val trackingId = UUID.randomUUID().toString()
+            val correlationId = UUID.randomUUID().toString()
             try {
                 val selection = configUser.userAttributesDelta()
                 val deltaPresent = !userDeltaLink.isNullOrBlank()
 
                 log.info("Starting users delta pull from Microsoft Graph")
                 log.debug(
-                    "TrackingId {} (deltaLinkPresent={}, pageSize={})",
-                    trackingId,
+                    "Starting users delta pull (correlationId={}, deltaLinkPresent={}, pageSize={})",
+                    correlationId,
                     deltaPresent,
                     configUser.userpagingsize,
                 )
@@ -89,14 +89,14 @@ class MsGraphUser(
                             .delta()
                             .withUrl(link)
                             .get { req ->
-                                req.headers.add("client-request-id", trackingId)
+                                req.headers.add("client-request-id", correlationId)
                             }
                     } else {
                         graphServiceClient
                             .users()
                             .delta()
                             .get { req ->
-                                req.headers.add("client-request-id", trackingId)
+                                req.headers.add("client-request-id", correlationId)
                                 req.headers.add("ConsistencyLevel", "eventual")
                                 req.queryParameters?.apply {
                                     select = selection
@@ -106,24 +106,40 @@ class MsGraphUser(
 
                 val firstPage =
                     try {
-                        callGraph { buildInitialRequest(userDeltaLink) }
+                        callGraph("users delta first page", correlationId) { buildInitialRequest(userDeltaLink) }
                     } catch (exception: ApiException) {
                         if (!userDeltaLink.isNullOrBlank() && exception.isInvalidDeltaState()) {
                             log.warn("Resetting deltaLink and retrying fresh delta.")
+                            log.debug(
+                                "Invalid users deltaLink rejected by Microsoft Graph (correlationId={})",
+                                correlationId,
+                            )
+                            log.trace("Invalid users deltaLink value: {}", userDeltaLink)
 
                             userDeltaLink = null
                             withContext(Dispatchers.IO) {
                                 deltaLinkStore.createOrUpdate("users", "")
                             }
 
-                            callGraph { buildInitialRequest(null) }
+                            callGraph(
+                                "users delta first page after delta reset",
+                                correlationId,
+                            ) {
+                                buildInitialRequest(null)
+                            }
                         } else {
                             throw exception
                         }
                     }
 
                 val notSeenIncremented = ConcurrentHashMap.newKeySet<UUID>()
-                pageThroughUsers(firstPage, isFullImport = false, notSeenIncremented = notSeenIncremented, false)
+                pageThroughUsers(
+                    firstPage = firstPage,
+                    isFullImport = false,
+                    notSeenIncremented = notSeenIncremented,
+                    republishAll = false,
+                    correlationId = correlationId,
+                )
             } catch (e: RuntimeException) {
                 log.error("Delta users pull failed: {}", e.message, e)
             } finally {
@@ -189,7 +205,7 @@ class MsGraphUser(
 
     suspend fun startFullImport(republishAll: Boolean = false) {
         val runStartTime = Instant.now()
-        val trackingId = UUID.randomUUID().toString()
+        val correlationId = UUID.randomUUID().toString()
         val notSeenIncremented = ConcurrentHashMap.newKeySet<UUID>()
         if (!shouldContinueWithImport()) {
             return
@@ -198,25 +214,33 @@ class MsGraphUser(
 
         log.info("Starting full import of users from Microsoft Graph")
         log.debug(
-            "Starting full import of users from Microsoft Graph. TrackingID {} (pageSize={})",
-            trackingId,
+            "Starting full import of users from Microsoft Graph (correlationId={}, pageSize={}, republishAll={})",
+            correlationId,
             configUser.userpagingsize,
+            republishAll,
         )
+        log.trace("Full import user select attributes: {}", selection.joinToString(","))
 
         val firstPage =
-            callGraph {
+            callGraph("users full import first page", correlationId) {
                 graphServiceClient
                     .users()
                     .delta()
                     .get { req ->
-                        req.headers.add("client-request-id", trackingId)
+                        req.headers.add("client-request-id", correlationId)
                         req.headers.add("ConsistencyLevel", "eventual")
                         req.queryParameters?.select = selection
                     }
             }
 
         val result =
-            pageThroughUsers(firstPage, isFullImport = true, notSeenIncremented = notSeenIncremented, republishAll)
+            pageThroughUsers(
+                firstPage = firstPage,
+                isFullImport = true,
+                notSeenIncremented = notSeenIncremented,
+                republishAll = republishAll,
+                correlationId = correlationId,
+            )
         markNotSeenUsers(runStartTime, notSeenIncremented)
         val cutoff = Instant.now().minus(configUser.staleAfterDays.toLong(), ChronoUnit.DAYS)
         val deletedUsers = withContext(Dispatchers.IO) { entraUserSyncService.finishFullImport(cutoff) }
@@ -257,15 +281,26 @@ class MsGraphUser(
     }
 
     private fun shouldContinueWithImport(): Boolean {
+        val correlationId = UUID.randomUUID().toString()
         val totalCountSource =
-            graphServiceClient
-                .users()
-                .count()
-                .get { req ->
-                    req.headers.add("ConsistencyLevel", "eventual")
-                    req.queryParameters?.filter = "userType eq 'Member'"
-                } ?: 0
+            callGraphBlocking("users count", correlationId) {
+                graphServiceClient
+                    .users()
+                    .count()
+                    .get { req ->
+                        req.headers.add("client-request-id", correlationId)
+                        req.headers.add("ConsistencyLevel", "eventual")
+                        req.queryParameters?.filter = "userType eq 'Member'"
+                    } ?: 0
+            }
         val totalCountDb = userRepository.getCount()
+        log.debug(
+            "User import coverage check (correlationId={}, sourceCount={}, dbCount={}, acceptedDeviationPercent={})",
+            correlationId,
+            totalCountSource,
+            totalCountDb,
+            configUser.acceptedDeviationPercent,
+        )
         if (totalCountDb != 0 &&
             abs(totalCountSource - totalCountDb).div(totalCountDb) <
             Math.divideExact(
@@ -285,6 +320,7 @@ class MsGraphUser(
         isFullImport: Boolean,
         notSeenIncremented: MutableSet<UUID>,
         republishAll: Boolean,
+        correlationId: String,
     ): PageResult {
         var current: DeltaGetResponse? = firstPage
         var last: DeltaGetResponse? = firstPage
@@ -311,12 +347,17 @@ class MsGraphUser(
 
                 val publishedThisPage =
                     withContext(Dispatchers.IO) {
-                        entraUserSyncService.processPage(value, notSeenIncremented, republishAll)
+                        entraUserSyncService.processPage(value, notSeenIncremented, republishAll, correlationId)
                     }
                 totalPublished += publishedThisPage
             } else {
                 log.debug("Users page {} fetched=0", pageNo)
-                log.trace(current.toString())
+                log.trace(
+                    "Users page {} metadata (nextLinkPresent={}, deltaLinkPresent={})",
+                    pageNo,
+                    !current.odataNextLink.isNullOrBlank(),
+                    !current.odataDeltaLink.isNullOrBlank(),
+                )
             }
 
             last = current
@@ -329,13 +370,16 @@ class MsGraphUser(
                     log.error("Detected nextLink cycle; stopping paging (nextLink={})", next)
                     current = null
                 } else {
+                    log.trace("Fetching users page {} from nextLink={}", pageNo + 1, next)
                     current =
-                        callGraph {
+                        callGraph("users delta next page", correlationId) {
                             graphServiceClient
                                 .users()
                                 .delta()
                                 .withUrl(next)
-                                .get()
+                                .get { req ->
+                                    req.headers.add("client-request-id", correlationId)
+                                }
                         }
                 }
             }
@@ -347,6 +391,7 @@ class MsGraphUser(
         } else {
             val initialRun = userDeltaLink.isNullOrEmpty()
             userDeltaLink = newDelta
+            log.trace("Storing users deltaLink value: {}", newDelta)
 
             withContext(Dispatchers.IO) {
                 deltaLinkStore.createOrUpdate("users", newDelta)
@@ -367,15 +412,69 @@ class MsGraphUser(
         return PageResult(totalUsersFetched, totalPublished)
     }
 
-    private suspend fun <T> callGraph(block: () -> T): T =
-        try {
-            withContext(Dispatchers.IO) { block() }
+    private suspend fun <T> callGraph(
+        operation: String,
+        correlationId: String? = null,
+        block: () -> T,
+    ): T {
+        val startTime = System.currentTimeMillis()
+        log.trace("Starting Microsoft Graph call: {} (correlationId={})", operation, correlationId)
+        return try {
+            withContext(Dispatchers.IO) { block() }.also {
+                logGraphCallElapsed(operation, correlationId, startTime)
+            }
         } catch (apiException: ApiException) {
-            log.error("Graph call failed with error code {}. {}", apiException.responseStatusCode, apiException.message)
+            log.error(
+                "Microsoft Graph call failed: {} (correlationId={}, status={}, elapsedMs={}). {}",
+                operation,
+                correlationId,
+                apiException.responseStatusCode,
+                System.currentTimeMillis() - startTime,
+                apiException.message,
+            )
             throw apiException
         } catch (exception: Exception) {
             throw exception as? RuntimeException ?: CompletionException(exception)
         }
+    }
+
+    private fun <T> callGraphBlocking(
+        operation: String,
+        correlationId: String? = null,
+        block: () -> T,
+    ): T {
+        val startTime = System.currentTimeMillis()
+        log.trace("Starting Microsoft Graph call: {} (correlationId={})", operation, correlationId)
+        return try {
+            block().also {
+                logGraphCallElapsed(operation, correlationId, startTime)
+            }
+        } catch (apiException: ApiException) {
+            log.error(
+                "Microsoft Graph call failed: {} (correlationId={}, status={}, elapsedMs={}). {}",
+                operation,
+                correlationId,
+                apiException.responseStatusCode,
+                System.currentTimeMillis() - startTime,
+                apiException.message,
+            )
+            throw apiException
+        }
+    }
+
+    private fun logGraphCallElapsed(
+        operation: String,
+        correlationId: String?,
+        startTimeMs: Long,
+    ) {
+        val elapsed = System.currentTimeMillis() - startTimeMs
+        log.debug(
+            "Microsoft Graph call completed: {} (correlationId={}, elapsedMs={})",
+            operation,
+            correlationId,
+            elapsed,
+        )
+    }
 
     private fun logElapsed(
         startTimeMs: Long,
