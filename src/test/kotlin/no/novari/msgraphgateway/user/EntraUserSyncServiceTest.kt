@@ -8,6 +8,7 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import io.mockk.verifyOrder
 import kotlinx.coroutines.test.runTest
 import no.novari.msgraphgateway.config.ConfigUser
 import no.novari.msgraphgateway.kafka.UserExternalProducerService
@@ -131,6 +132,30 @@ class EntraUserSyncServiceTest {
 
             verify(exactly = 1) { userRepository.incrementNotSeenCount(listOf(removedId)) }
             verify(exactly = 0) { userExternalRepository.incrementNotSeenCount(any()) }
+        }
+
+    @Test
+    fun processPageCalculatesChecksumBeforeImportingUsers() =
+        runTest {
+            val userId = UUID.randomUUID()
+            val users = listOf(memberUser(userId))
+
+            every { userRepository.batchUpsertReturningChanged(any()) } returns setOf(userId)
+
+            service.processPage(
+                users = users,
+                notSeenIncremented = mutableSetOf(),
+                republishAll = false,
+            )
+
+            verifyOrder {
+                checksumService.checksum(any())
+                userRepository.batchUpsertReturningChanged(any())
+            }
+
+            coVerify(exactly = 1) {
+                producer.publish(any())
+            }
         }
 
     @BeforeEach
