@@ -25,7 +25,7 @@ logging:
         org.apache: WARN
         org.springframework.boot.autoconfigure.flyway: INFO
         org.flywaydb: INFO
-        no.novari: DEBUG
+        no.novari: INFO
 
 novari:
     application-id: fint-kontroll-ms-graph-gateway
@@ -51,6 +51,14 @@ novari:
             initial-delay-ms: 1000
           full-import:
             cron: 0 0 12 * * *
+        group:
+            delta:
+                fixed-delay-ms: 1300000
+                initial-delay-ms: 10000
+            full-import:
+                cron: 0 0 12 * * *
+            weekly-publish:
+                cron: 0 0 2 * * SUN
 
 ms-graph:
   user:
