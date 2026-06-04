@@ -1,12 +1,15 @@
 package no.novari.msgraphgateway.service
 
+import com.microsoft.graph.models.Group
 import com.microsoft.graph.serviceclient.GraphServiceClient
 import com.microsoft.graph.users.item.getmembergroups.GetMemberGroupsPostRequestBody
+import com.microsoft.kiota.ApiException
 import no.novari.msgraphgateway.config.ConfigGroup
 import no.novari.msgraphgateway.config.ConfigUser
 import no.novari.msgraphgateway.dto.UserWithGroupsDto
 import no.novari.msgraphgateway.entra.EntraGroup
 import no.novari.msgraphgateway.entra.EntraUser
+import no.novari.msgraphgateway.group.MsGraphGroup
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
@@ -14,10 +17,15 @@ import org.springframework.web.server.ResponseStatusException
 
 @Service
 class GroupService(
-    private val configUser: ConfigUser,
+    private val msGraphGroup: MsGraphGroup,
     private val configGroup: ConfigGroup,
+    private val configUser: ConfigUser,
     private val graphServiceClient: GraphServiceClient,
 ) {
+    fun triggerFullImport(republishAll: Boolean) {
+        msGraphGroup.requestFullImport(republishAll)
+    }
+
     fun getEntraUserWithGroups(userId: String): UserWithGroupsDto =
         try {
             val selection = configUser.userAttributesDelta()
@@ -85,6 +93,49 @@ class GroupService(
             log.error("Failed to fetch user or groups: {}", ex.message)
             UserWithGroupsDto()
         }
+
+    fun getGroupInfo(groupId: String): EntraGroup? =
+        try {
+            val group =
+                graphServiceClient
+                    .groups()
+                    .byGroupId(groupId)
+                    .get()
+                    ?: return null
+
+            EntraGroup(group, configGroup)
+        } catch (ex: ApiException) {
+            if (ex.responseStatusCode == 404) {
+                log.info("Group with objectId {} not found in Entra", groupId)
+                null
+            } else {
+                throw ex
+            }
+        }
+
+    fun getGroupInfoByResourceGroupId(resourceGroupId: Long): EntraGroup? {
+        val attr = configGroup.resourceGroupIdAttribute ?: return null
+
+        val groups =
+            graphServiceClient
+                .groups()
+                .get { req ->
+                    req.queryParameters?.select =
+                        arrayOf(
+                            "id",
+                            "displayName",
+                            attr,
+                        )
+                }?.value
+                ?: return null
+
+        val group =
+            groups.firstOrNull {
+                it.additionalData[attr]?.toString()?.toLongOrNull() == resourceGroupId
+            } ?: return null
+
+        return EntraGroup(group, configGroup)
+    }
 
     companion object {
         private val log = LoggerFactory.getLogger(GroupService::class.java)

@@ -6,12 +6,12 @@ import org.slf4j.LoggerFactory
 import java.io.Serializable
 
 data class EntraGroup(
-    val id: String? = null,
+    val objectId: String? = null,
     val displayName: String? = null,
     val resourceGroupID: Long? = null,
 ) : Serializable {
     constructor(group: Group, configGroup: ConfigGroup) : this(
-        id = group.id,
+        objectId = group.id,
         displayName = group.displayName,
         resourceGroupID = getResourceGroupId(group, configGroup),
     )
@@ -32,4 +32,11 @@ data class EntraGroup(
             }
         }
     }
+
+    fun toPayload(): EntraGroupPayload =
+        EntraGroupPayload(
+            objectId = objectId,
+            displayName = displayName,
+            resourceGroupId = resourceGroupID,
+        )
 }

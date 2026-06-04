@@ -1,30 +1,359 @@
 package no.novari.msgraphgateway.group
 
+import com.microsoft.graph.groups.delta.DeltaGetResponse
 import com.microsoft.graph.serviceclient.GraphServiceClient
-import no.novari.msgraphgateway.config.Config
+import com.microsoft.kiota.ApiException
+import jakarta.annotation.PostConstruct
+import jakarta.annotation.PreDestroy
+import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Mutex
 import no.novari.msgraphgateway.config.ConfigGroup
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
-import java.util.concurrent.atomic.AtomicInteger
+import no.novari.msgraphgateway.entra.DeltaLinkStore
+import org.slf4j.LoggerFactory
+import org.springframework.scheduling.annotation.Scheduled
+import org.springframework.stereotype.Component
+import java.util.UUID
+import java.util.concurrent.CompletionException
+import java.util.concurrent.atomic.AtomicBoolean
 
-class MsGraphGroup {
-    protected val config: Config? = null
-    protected val configGroup: ConfigGroup? = null
-    protected val graphServiceClient: GraphServiceClient? = null
+@Component
+class MsGraphGroup(
+    private val configGroup: ConfigGroup,
+    private val graphServiceClient: GraphServiceClient,
+    private val groupSyncService: EntraGroupSyncService,
+    private val deltaLinkStore: DeltaLinkStore,
+) {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val runMutex = Mutex()
+    private val fullImportRequested = AtomicBoolean(false)
+    private val republishAllRequested = AtomicBoolean(false)
 
-//    private val resourceGroupMembershipCache: ConcurrentHashMap<String?, Optional<ResourceGroupMembership?>?>? = null
-    private val membershipCache: MutableSet<String?> = ConcurrentHashMap.newKeySet<String?>()
-    private val azureGroupCache: ConcurrentHashMap<String?, MsGraphGroup?>? = null
+    @Volatile
+    private var groupDeltaLink: String? = null
 
-//    private val azureGroupProducerService: AzureGroupProducerService? = null
-//    private val azureGroupMembershipProducerService: AzureGroupMembershipProducerService? = null
-    private val groupExecutor: ExecutorService = Executors.newFixedThreadPool(10)
-    private var fullImport = false
-    private var odataGroupDeltaLink: String? = null
-    private var numMembers = AtomicInteger(0)
-    private val addedMemberships = AtomicInteger(0)
-    private val removedMemberships = AtomicInteger(0)
-    private var groupCounter: AtomicInteger? = null
-    private var processedGroupIds: MutableSet<String?>? = null
+    @PostConstruct
+    fun loadDeltaLink() {
+        groupDeltaLink = deltaLinkStore.find("groups")
+
+        if (!groupDeltaLink.isNullOrBlank()) {
+            log.info("Loaded persisted groups deltaLink from DB")
+        } else {
+            log.info("No persisted groups deltaLink found (first run)")
+        }
+    }
+
+    @PreDestroy
+    fun shutdown() {
+        scope.cancel("MsGraphGroup shutting down")
+    }
+
+    @Scheduled(
+        initialDelayString = $$"${novari.scheduler.group.delta.initial-delay-ms}",
+        fixedDelayString = $$"${novari.scheduler.group.delta.fixed-delay-ms}",
+    )
+    fun pullAllGroupsDelta() {
+        if (fullImportRequested.get()) {
+            log.info("Full group import pending; skipping delta run")
+            return
+        }
+
+        scope.launch {
+            if (!runMutex.tryLock()) {
+                log.info("Group sync already running; skipping delta run")
+                return@launch
+            }
+
+            val startTime = System.currentTimeMillis()
+            val trackingId = UUID.randomUUID().toString()
+
+            try {
+                val selection = configGroup.getGroupAttributesNotMembers()
+                val deltaPresent = !groupDeltaLink.isNullOrBlank()
+
+                log.info("Starting groups delta pull from Microsoft Graph")
+                log.debug(
+                    "TrackingId {} (deltaLinkPresent={}, pageSize={})",
+                    trackingId,
+                    deltaPresent,
+                    configGroup.groupPagingSize,
+                )
+
+                fun buildInitialRequest(link: String?): DeltaGetResponse? =
+                    if (!link.isNullOrBlank()) {
+                        graphServiceClient
+                            .groups()
+                            .delta()
+                            .withUrl(link)
+                            .get { req ->
+                                req.headers.add("client-request-id", trackingId)
+                            }
+                    } else {
+                        graphServiceClient
+                            .groups()
+                            .delta()
+                            .get { req ->
+                                req.headers.add("client-request-id", trackingId)
+                                req.headers.add("ConsistencyLevel", "eventual")
+                                req.queryParameters?.apply {
+                                    select = selection
+                                    top = configGroup.groupPagingSize
+                                }
+                            }
+                    }
+
+                val firstPage =
+                    try {
+                        callGraph { buildInitialRequest(groupDeltaLink) }
+                    } catch (exception: ApiException) {
+                        if (!groupDeltaLink.isNullOrBlank() && exception.isInvalidDeltaState()) {
+                            log.warn("Resetting group deltaLink and retrying fresh delta")
+
+                            groupDeltaLink = null
+                            withContext(Dispatchers.IO) {
+                                deltaLinkStore.createOrUpdate("groups", "")
+                            }
+
+                            callGraph { buildInitialRequest(null) }
+                        } else {
+                            throw exception
+                        }
+                    }
+
+                pageThroughGroups(
+                    firstPage = firstPage,
+                    isFullImport = false,
+                    notSeenIncremented = mutableSetOf(),
+                    republishAll = false,
+                )
+            } catch (e: RuntimeException) {
+                log.error("Delta groups pull failed: {}", e.message, e)
+            } finally {
+                runMutex.unlock()
+                logElapsed(startTime, "delta groups pull")
+                tryStartFullImportIfRequested()
+            }
+        }
+    }
+
+    @Scheduled(cron = $$"${novari.scheduler.group.full-import.cron}")
+    fun fullImportGroups() {
+        requestFullImport(false)
+    }
+
+    @Scheduled(cron = $$"${novari.scheduler.group.weekly-publish.cron}")
+    fun weeklyPublishGroups() {
+        requestFullImport(true)
+    }
+
+    fun requestFullImport(republishAll: Boolean = false) {
+        fullImportRequested.set(true)
+
+        if (republishAll) {
+            republishAllRequested.set(true)
+        }
+
+        scope.launch {
+            if (!runMutex.tryLock()) {
+                log.info("A sync is running; full group import requested and will start afterward")
+                return@launch
+            }
+
+            val startTime = System.currentTimeMillis()
+            val republishRequested = republishAllRequested.getAndSet(false)
+
+            try {
+                startFullImport(republishRequested)
+            } finally {
+                runMutex.unlock()
+                logElapsed(startTime, "full import of groups")
+                fullImportRequested.set(false)
+            }
+        }
+    }
+
+    private suspend fun tryStartFullImportIfRequested() {
+        if (!fullImportRequested.get()) return
+        if (!runMutex.tryLock()) return
+
+        val startTime = System.currentTimeMillis()
+        val republishRequested = republishAllRequested.getAndSet(false)
+
+        try {
+            startFullImport(republishRequested)
+        } finally {
+            runMutex.unlock()
+            logElapsed(startTime, "full import of groups")
+            fullImportRequested.set(false)
+        }
+    }
+
+    suspend fun startFullImport(republishAll: Boolean = false) {
+        val trackingId = UUID.randomUUID().toString()
+        val selection = configGroup.getGroupAttributesNotMembers()
+
+        log.info("Starting full import of groups from Microsoft Graph")
+        log.debug(
+            "Starting full import of groups from Microsoft Graph. TrackingID {} (pageSize={})",
+            trackingId,
+            configGroup.groupPagingSize,
+        )
+
+        val firstPage =
+            callGraph {
+                graphServiceClient
+                    .groups()
+                    .delta()
+                    .get { req ->
+                        req.headers.add("client-request-id", trackingId)
+                        req.headers.add("ConsistencyLevel", "eventual")
+                        req.queryParameters?.apply {
+                            select = selection
+                            top = configGroup.groupPagingSize
+                        }
+                    }
+            }
+
+        val result =
+            pageThroughGroups(
+                firstPage = firstPage,
+                isFullImport = true,
+                notSeenIncremented = mutableSetOf(),
+                republishAll = republishAll,
+            )
+
+        log.info(
+            "Full import of groups completed (fetchedTotal={}, publishedChanged={})",
+            result.totalGroupsSeen,
+            result.publishedGroups,
+        )
+    }
+
+    private suspend fun pageThroughGroups(
+        firstPage: DeltaGetResponse?,
+        isFullImport: Boolean,
+        republishAll: Boolean,
+        notSeenIncremented: MutableSet<UUID>,
+    ): PageResult {
+        var current: DeltaGetResponse? = firstPage
+        var last: DeltaGetResponse? = firstPage
+
+        var totalGroupsFetched = 0
+        var totalPublished = 0
+        var pageNo = 0
+
+        val seenNextLinks = HashSet<String>()
+
+        while (current != null) {
+            pageNo++
+
+            val value = current.value
+            val fetchedThisPage = value?.size ?: 0
+
+            if (fetchedThisPage > 0) {
+                totalGroupsFetched += fetchedThisPage
+
+                log.debug(
+                    "Groups page {} fetched={} (fetchedTotalSoFar={})",
+                    pageNo,
+                    fetchedThisPage,
+                    totalGroupsFetched,
+                )
+
+                val publishedThisPage =
+                    withContext(Dispatchers.IO) {
+                        groupSyncService.processPage(value, notSeenIncremented, republishAll)
+                    }
+
+                totalPublished += publishedThisPage
+            } else {
+                log.debug("Groups page {} fetched=0", pageNo)
+                log.trace(current.toString())
+            }
+
+            last = current
+
+            val next = current.odataNextLink
+
+            current =
+                if (next.isNullOrBlank()) {
+                    null
+                } else {
+                    if (!seenNextLinks.add(next)) {
+                        log.error("Detected group nextLink cycle; stopping paging (nextLink={})", next)
+                        null
+                    } else {
+                        callGraph {
+                            graphServiceClient
+                                .groups()
+                                .delta()
+                                .withUrl(next)
+                                .get()
+                        }
+                    }
+                }
+        }
+
+        val newDelta = last?.odataDeltaLink
+
+        if (newDelta.isNullOrBlank()) {
+            log.error("Last group page does not contain @odata.deltaLink; deltaLink not updated")
+        } else {
+            val initialRun = groupDeltaLink.isNullOrEmpty()
+            groupDeltaLink = newDelta
+
+            withContext(Dispatchers.IO) {
+                deltaLinkStore.createOrUpdate("groups", newDelta)
+            }
+
+            if (!isFullImport) {
+                log.info(
+                    "Delta groups pull complete (initialRun={}, fetchedTotal={}, publishedChanged={})",
+                    initialRun,
+                    totalGroupsFetched,
+                    totalPublished,
+                )
+            } else {
+                log.info("Stored new group deltaLink after full import")
+            }
+        }
+
+        return PageResult(totalGroupsFetched, totalPublished)
+    }
+
+    private fun ApiException.isInvalidDeltaState(): Boolean =
+        responseStatusCode == 400 || responseStatusCode == 404 || responseStatusCode == 410
+
+    private suspend fun <T> callGraph(block: () -> T): T =
+        try {
+            withContext(Dispatchers.IO) { block() }
+        } catch (apiException: ApiException) {
+            log.error(
+                "Graph group call failed with error code {}. {}",
+                apiException.responseStatusCode,
+                apiException.message,
+            )
+            throw apiException
+        } catch (exception: Exception) {
+            throw exception as? RuntimeException ?: CompletionException(exception)
+        }
+
+    private fun logElapsed(
+        startTimeMs: Long,
+        operation: String,
+    ) {
+        val elapsed = System.currentTimeMillis() - startTimeMs
+        val minutes = (elapsed / 1000) / 60
+        val seconds = (elapsed / 1000) % 60
+
+        log.info("Finished {} in {}m {}s", operation, minutes, seconds)
+    }
+
+    private data class PageResult(
+        val totalGroupsSeen: Int,
+        val publishedGroups: Int,
+    )
+
+    companion object {
+        private val log = LoggerFactory.getLogger(MsGraphGroup::class.java)
+    }
 }

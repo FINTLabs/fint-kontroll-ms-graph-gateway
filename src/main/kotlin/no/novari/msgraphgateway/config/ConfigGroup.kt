@@ -11,6 +11,7 @@ class ConfigGroup(
     var allowGroupDelete: Boolean? = null,
     var groupPagingSize: Int? = null,
     var uniqueNamePrefix: String? = null,
+    var minNotSeenCount: Int = 3,
 ) {
     companion object {
         private val groupAttributes = listOf("id", "displayName")
