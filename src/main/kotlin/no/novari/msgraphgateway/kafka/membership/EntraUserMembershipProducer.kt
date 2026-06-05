@@ -8,8 +8,8 @@ import no.novari.kafka.topic.configuration.EventCleanupFrequency
 import no.novari.kafka.topic.configuration.EventTopicConfiguration
 import no.novari.kafka.topic.name.EventTopicNameParameters
 import no.novari.kafka.topic.name.TopicNamePrefixParameters
-import no.novari.msgraphgateway.dto.EntraDeviceMembershipDto
-import no.novari.msgraphgateway.membership.device.DeviceMembershipProcessingProperties
+import no.novari.msgraphgateway.dto.EntraUserMembershipDto
+import no.novari.msgraphgateway.membership.MembershipProcessingProperties
 import org.slf4j.LoggerFactory
 import org.springframework.boot.context.event.ApplicationReadyEvent
 import org.springframework.context.event.EventListener
@@ -17,18 +17,18 @@ import org.springframework.stereotype.Component
 import java.time.Duration
 
 @Component
-class EntraMembershipProducer(
-    private val properties: DeviceMembershipProcessingProperties,
+class EntraUserMembershipProducer(
+    private val properties: MembershipProcessingProperties,
     parameterizedTemplateFactory: ParameterizedTemplateFactory,
     private val entityTopicService: EventTopicService,
 ) {
-    private val template: ParameterizedTemplate<EntraDeviceMembershipDto> =
-        parameterizedTemplateFactory.createTemplate(EntraDeviceMembershipDto::class.java)
+    private val template: ParameterizedTemplate<EntraUserMembershipDto> =
+        parameterizedTemplateFactory.createTemplate(EntraUserMembershipDto::class.java)
 
     private val nameParams: EventTopicNameParameters =
         EventTopicNameParameters
             .builder()
-            .eventName("entra-device-group-membership")
+            .eventName("graph-user-group-membership")
             .topicNamePrefixParameters(
                 TopicNamePrefixParameters
                     .stepBuilder()
@@ -48,26 +48,26 @@ class EntraMembershipProducer(
                 .cleanupFrequency(EventCleanupFrequency.NORMAL)
                 .build(),
         )
-        log.info("Initialized topic entra-device-group-membership with {} partitions", properties.resultTopicPartitions)
+        log.info("Initialized topic graph-user-group-membership with {} partitions", properties.resultTopicPartitions)
     }
 
     fun publish(
         messageKey: String,
-        entraDeviceMembershipDto: EntraDeviceMembershipDto,
+        entraUserMembershipDto: EntraUserMembershipDto,
     ) {
         val record =
             ParameterizedProducerRecord
-                .builder<EntraDeviceMembershipDto>()
+                .builder<EntraUserMembershipDto>()
                 .topicNameParameters(nameParams)
                 .key(messageKey)
-                .value(entraDeviceMembershipDto)
+                .value(entraUserMembershipDto)
                 .build()
 
         template.send(record)
-        log.info("Published entra-device-group-membership for messageKey: {}", messageKey)
+        log.info("Published graph-user-group-membership for messageKey: {}", messageKey)
     }
 
     companion object {
-        private val log = LoggerFactory.getLogger(EntraMembershipProducer::class.java)
+        private val log = LoggerFactory.getLogger(EntraUserMembershipProducer::class.java)
     }
 }

@@ -16,11 +16,12 @@ import io.mockk.verify
 import no.novari.msgraphgateway.dto.EntraDeviceMembershipDto
 import no.novari.msgraphgateway.entra.EntraStatus
 import no.novari.msgraphgateway.kafka.OperationType
-import no.novari.msgraphgateway.kafka.membership.EntraMembershipProducer
+import no.novari.msgraphgateway.kafka.membership.EntraDeviceMembershipProducer
+import no.novari.msgraphgateway.membership.MembershipProcessingProperties
 import no.novari.msgraphgateway.repository.device.DeviceMembershipEntity
 import no.novari.msgraphgateway.repository.device.DeviceMembershipEntityRepository
 import no.novari.msgraphgateway.repository.device.DeviceMembershipId
-import no.novari.msgraphgateway.services.member.MembershipService
+import no.novari.msgraphgateway.services.member.DeviceMembershipService
 import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.Response
@@ -35,13 +36,13 @@ import java.time.OffsetDateTime
 import java.util.UUID
 import java.util.stream.Stream
 
-class MembershipServiceTest {
+class DeviceMembershipServiceTest {
     private lateinit var graphServiceClient: GraphServiceClient
     private lateinit var requestAdapter: RequestAdapter
     private lateinit var batchRequestBuilder: BatchRequestBuilder
-    private lateinit var entraMembershipProducer: EntraMembershipProducer
+    private lateinit var entraDeviceMembershipProducer: EntraDeviceMembershipProducer
     private lateinit var deviceMembershipEntityRepository: DeviceMembershipEntityRepository
-    private lateinit var service: MembershipService
+    private lateinit var service: DeviceMembershipService
 
     @Test
     fun processKontrollMembershipBatchPublishesErrorForInvalidMembershipIds() {
@@ -58,7 +59,7 @@ class MembershipServiceTest {
         verify(exactly = 0) { deviceMembershipEntityRepository.findAllByIds(any()) }
         verify(exactly = 0) { deviceMembershipEntityRepository.saveAll(any()) }
         verify(exactly = 1) {
-            entraMembershipProducer.publish(
+            entraDeviceMembershipProducer.publish(
                 messageKey,
                 EntraDeviceMembershipDto(
                     code = EntraStatus.ERROR,
@@ -108,7 +109,7 @@ class MembershipServiceTest {
         }
         verify(exactly = 1) { deviceMembershipEntityRepository.saveAll(any()) }
         verify(exactly = 1) {
-            entraMembershipProducer.publish(
+            entraDeviceMembershipProducer.publish(
                 "duplicate-add",
                 EntraDeviceMembershipDto(
                     code = EntraStatus.NO_CHANGES,
@@ -141,7 +142,7 @@ class MembershipServiceTest {
         assertEquals(1, savedSlot.captured.size)
         assertEquals(testCase.expectedPersistedStatus, savedSlot.captured.single().status)
         verify(exactly = 1) {
-            entraMembershipProducer.publish(
+            entraDeviceMembershipProducer.publish(
                 "graph-status",
                 EntraDeviceMembershipDto(
                     code = testCase.expectedPublishedStatus,
@@ -212,7 +213,7 @@ class MembershipServiceTest {
         graphServiceClient = mockk(relaxed = true)
         requestAdapter = mockk(relaxed = true)
         batchRequestBuilder = mockk(relaxed = true)
-        entraMembershipProducer = mockk(relaxed = true)
+        entraDeviceMembershipProducer = mockk(relaxed = true)
         deviceMembershipEntityRepository = mockk(relaxed = true)
 
         every { deviceMembershipEntityRepository.findAllByIds(any()) } returns emptyMap()
@@ -253,16 +254,18 @@ class MembershipServiceTest {
             }
 
         service =
-            MembershipService(
+            DeviceMembershipService(
                 graphServiceClient = graphServiceClient,
-                entraMembershipProducer = entraMembershipProducer,
+                entraDeviceMembershipProducer = entraDeviceMembershipProducer,
                 deviceMembershipEntityRepository = deviceMembershipEntityRepository,
                 properties =
-                    DeviceMembershipProcessingProperties(
+                    MembershipProcessingProperties(
+                        consumerConcurrency = 1,
                         consumerMaxPollRecords = 100,
                         graphMaxConcurrentCalls = 3,
                         graphBatchSize = 20,
                         resultTopicPartitions = 1,
+                        directoryObjectsBaseUrl = "https://graph.microsoft.com/v1.0/directoryObjects/",
                     ),
             )
     }

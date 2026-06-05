@@ -6,56 +6,38 @@ import com.microsoft.graph.models.ReferenceCreate
 import com.microsoft.graph.serviceclient.GraphServiceClient
 import com.microsoft.kiota.RequestInformation
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.runBlocking
-import no.novari.msgraphgateway.dto.EntraDeviceMembershipDto
 import no.novari.msgraphgateway.entra.EntraStatus
 import no.novari.msgraphgateway.kafka.OperationType
-import no.novari.msgraphgateway.kafka.membership.EntraMembershipProducer
-import no.novari.msgraphgateway.membership.device.DeviceMembershipProcessingProperties
-import no.novari.msgraphgateway.membership.device.DeviceResourceGroupMembership
-import no.novari.msgraphgateway.repository.device.DeviceMembershipEntity
-import no.novari.msgraphgateway.repository.device.DeviceMembershipEntityRepository
-import no.novari.msgraphgateway.repository.device.DeviceMembershipId
+import no.novari.msgraphgateway.membership.MembershipProcessingProperties
+import no.novari.msgraphgateway.membership.MembershipStatusResolver
 import org.apache.kafka.clients.consumer.ConsumerRecord
 import org.slf4j.LoggerFactory
-import org.springframework.stereotype.Service
-import org.springframework.transaction.annotation.Transactional
 import java.io.IOException
-import java.time.OffsetDateTime
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 
 private const val UNKNOWN_ERROR = "Unknown error"
+private const val MAX_RETRIES = 2
 
-@Service
-class MembershipService(
+abstract class AbstractMembershipService<M : Any, ID : Any, E : Any>(
     private val graphServiceClient: GraphServiceClient,
-    private val entraMembershipProducer: EntraMembershipProducer,
-    private val deviceMembershipEntityRepository: DeviceMembershipEntityRepository,
-    private val properties: DeviceMembershipProcessingProperties,
-    private val defaultDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    private val properties: MembershipProcessingProperties,
+    private val defaultDispatcher: CoroutineDispatcher,
 ) {
-    @Transactional
-    fun deleteAllMemberships(): Int = deviceMembershipEntityRepository.deleteAll()
-
-    @Transactional
-    fun deleteMembershipsUpdatedBefore(cutoff: OffsetDateTime): Int =
-        deviceMembershipEntityRepository.deleteLastUpdatedBefore(cutoff)
-
-    fun processKontrollMembershipBatch(records: List<ConsumerRecord<String, DeviceResourceGroupMembership>>) {
+    open fun processKontrollMembershipBatch(records: List<ConsumerRecord<String, M>>) {
         if (records.isEmpty()) {
             return
         }
 
         log.info("Received membership batch with {} records", records.size)
-        val validMemberships = mutableListOf<ParsedMembership>()
-        val pendingMemberships = mutableListOf<PendingMembership>()
-        val statesToSave = mutableListOf<DeviceMembershipEntity>()
-        val resultsToPublish = mutableListOf<MembershipResult>()
+        val validMemberships = mutableListOf<ParsedMembership<M, ID>>()
+        val pendingMemberships = mutableListOf<PendingMembership<M, ID, E>>()
+        val statesToSave = mutableListOf<E>()
+        val resultsToPublish = mutableListOf<MembershipResult<M>>()
 
         records.forEach { record ->
             val messageKey = record.key()
@@ -83,23 +65,33 @@ class MembershipService(
         }
 
         val existingMembershipsById =
-            deviceMembershipEntityRepository.findAllByIds(
+            findExistingMemberships(
                 validMemberships.map { it.membershipId }.distinct(),
             )
 
         validMemberships.forEach { parsed ->
             val existing = existingMembershipsById[parsed.membershipId]
 
-            if (shouldSkipOperation(existing, parsed.membership.operation)) {
+            if (
+                MembershipStatusResolver.shouldSkipOperation(
+                    existing?.let(::statusOf),
+                    operationOf(parsed.membership),
+                )
+            ) {
                 val kafkaStatus = EntraStatus.NO_CHANGES
-                val newMembershipStatus = getNewMembershipStatus(parsed.membership.operation, kafkaStatus)
-                statesToSave += buildMembershipState(parsed.membershipId, existing, newMembershipStatus)
+                val persistedStatus =
+                    MembershipStatusResolver.persistedStatus(
+                        operationOf(parsed.membership),
+                        kafkaStatus,
+                    )
+                statesToSave += buildMembershipState(parsed.membershipId, existing, persistedStatus)
                 resultsToPublish += MembershipResult(parsed.messageKey, parsed.membership, kafkaStatus)
                 log.debug(
-                    "Skipped duplicate membership operation {} for device {} and group {}",
-                    parsed.membership.operation,
-                    parsed.membership.entraDeviceRef,
-                    parsed.membership.entraGroupRef,
+                    "Skipped duplicate membership operation {} for {} {} and group {}",
+                    operationOf(parsed.membership),
+                    memberType,
+                    memberIdOf(parsed.membership),
+                    groupIdOf(parsed.membership),
                 )
             } else {
                 pendingMemberships +=
@@ -118,7 +110,11 @@ class MembershipService(
             }
 
         resolvedResults.forEach { result ->
-            val persistedStatus = getNewMembershipStatus(result.pending.membership.operation, result.status)
+            val persistedStatus =
+                MembershipStatusResolver.persistedStatus(
+                    operationOf(result.pending.membership),
+                    result.status,
+                )
             statesToSave +=
                 buildMembershipState(
                     result.pending.membershipId,
@@ -128,21 +124,45 @@ class MembershipService(
             resultsToPublish += MembershipResult(result.pending.messageKey, result.pending.membership, result.status)
         }
 
-        deviceMembershipEntityRepository.saveAll(statesToSave)
+        saveMembershipStates(statesToSave)
 
         resultsToPublish.forEach { result ->
             publishResult(result.messageKey, result.membership, result.status)
         }
     }
 
-    private fun processGraphBatchChunkWithRetries(chunk: List<PendingMembership>): List<ResolvedBatchResult> {
+    private fun parseMembershipId(
+        membership: M,
+        messageKey: String,
+    ): ID? =
+        try {
+            membershipIdOf(
+                UUID.fromString(memberIdOf(membership)),
+                UUID.fromString(groupIdOf(membership)),
+            )
+        } catch (_: IllegalArgumentException) {
+            log.error(
+                "Invalid {}/group UUIDs in membership message key {} ({}Ref={}, groupRef={})",
+                memberType,
+                messageKey,
+                memberType,
+                memberIdOf(membership),
+                groupIdOf(membership),
+            )
+            publishResult(messageKey, membership, EntraStatus.ERROR)
+            null
+        }
+
+    private fun processGraphBatchChunkWithRetries(
+        chunk: List<PendingMembership<M, ID, E>>,
+    ): List<ResolvedBatchResult<M, ID, E>> {
         var failed = chunk
         var retryCount = 0
-        val resolved = mutableListOf<ResolvedBatchResult>()
+        val resolved = mutableListOf<ResolvedBatchResult<M, ID, E>>()
 
         while (failed.isNotEmpty()) {
             val statusesByMembership = executeGraphBatch(failed)
-            val toRetry = mutableListOf<PendingMembership>()
+            val toRetry = mutableListOf<PendingMembership<M, ID, E>>()
 
             failed.forEach { pending ->
                 val status = statusesByMembership[pending] ?: EntraStatus.FAILED
@@ -171,14 +191,14 @@ class MembershipService(
     }
 
     private suspend fun processPendingMemberships(
-        pendingMemberships: List<PendingMembership>,
-    ): List<ResolvedBatchResult> {
+        pendingMemberships: List<PendingMembership<M, ID, E>>,
+    ): List<ResolvedBatchResult<M, ID, E>> {
         if (pendingMemberships.isEmpty()) {
             return emptyList()
         }
 
         val chunks = pendingMemberships.chunked(properties.graphBatchSize)
-        val resolvedByChunk = Array<List<ResolvedBatchResult>?>(chunks.size) { null }
+        val resolvedByChunk = Array<List<ResolvedBatchResult<M, ID, E>>?>(chunks.size) { null }
         val nextChunkIndex = AtomicInteger(0)
         val workerCount = minOf(properties.graphMaxConcurrentCalls, chunks.size)
 
@@ -200,9 +220,11 @@ class MembershipService(
         return resolvedByChunk.filterNotNull().flatten()
     }
 
-    private fun executeGraphBatch(memberships: List<PendingMembership>): Map<PendingMembership, EntraStatus> {
+    private fun executeGraphBatch(
+        memberships: List<PendingMembership<M, ID, E>>,
+    ): Map<PendingMembership<M, ID, E>, EntraStatus> {
         val batchRequestContent = BatchRequestContent(graphServiceClient)
-        val stepIdToMembership = linkedMapOf<String, PendingMembership>()
+        val stepIdToMembership = linkedMapOf<String, PendingMembership<M, ID, E>>()
 
         memberships.forEach { membership ->
             val stepId = batchRequestContent.addBatchRequestStep(buildRequest(membership.membership))
@@ -225,10 +247,11 @@ class MembershipService(
             val statusCode = responseStatusCodes[stepId]
             if (statusCode == null) {
                 log.error(
-                    "Missing batch response status for stepId {} (device {}, group {})",
+                    "Missing batch response status for stepId {} ({} {}, group {})",
                     stepId,
-                    membership.membership.entraDeviceRef,
-                    membership.membership.entraGroupRef,
+                    memberType,
+                    memberIdOf(membership.membership),
+                    groupIdOf(membership.membership),
                 )
                 membership to EntraStatus.FAILED
             } else {
@@ -238,39 +261,29 @@ class MembershipService(
         }
     }
 
-    private fun buildRequest(membership: DeviceResourceGroupMembership): RequestInformation =
-        when (membership.operation) {
+    private fun buildRequest(membership: M): RequestInformation =
+        when (operationOf(membership)) {
             OperationType.ADD -> buildAddRequest(membership)
             OperationType.REMOVE -> buildRemoveRequest(membership)
         }
 
-    private fun buildAddRequest(membership: DeviceResourceGroupMembership): RequestInformation {
+    private fun buildAddRequest(membership: M): RequestInformation {
         val referenceMember = ReferenceCreate()
-        referenceMember.odataId = directoryObjectOdataId(membership.entraDeviceRef)
+        referenceMember.odataId = properties.directoryObjectsBaseUrl + memberIdOf(membership)
         return graphServiceClient
             .groups()
-            .byGroupId(membership.entraGroupRef)
+            .byGroupId(groupIdOf(membership))
             .members()
             .ref()
             .toPostRequestInformation(referenceMember)
     }
 
-    private fun directoryObjectOdataId(deviceObjectId: String): String {
-        val graphBaseUrl = graphServiceClient.requestAdapter.baseUrl.trimEnd('/')
-
-        require(graphBaseUrl.isNotBlank()) {
-            "Graph request adapter base URL is required"
-        }
-
-        return "$graphBaseUrl/directoryObjects/$deviceObjectId"
-    }
-
-    private fun buildRemoveRequest(membership: DeviceResourceGroupMembership): RequestInformation =
+    private fun buildRemoveRequest(membership: M): RequestInformation =
         graphServiceClient
             .groups()
-            .byGroupId(membership.entraGroupRef)
+            .byGroupId(groupIdOf(membership))
             .members()
-            .byDirectoryObjectId(membership.entraDeviceRef)
+            .byDirectoryObjectId(memberIdOf(membership))
             .ref()
             .toDeleteRequestInformation()
 
@@ -287,17 +300,17 @@ class MembershipService(
     }
 
     private fun toEntraStatus(
-        membership: DeviceResourceGroupMembership,
+        membership: M,
         statusCode: Int,
         error: String?,
     ): EntraStatus =
-        when (membership.operation) {
+        when (operationOf(membership)) {
             OperationType.ADD -> toAddStatus(membership, statusCode, error)
             OperationType.REMOVE -> toRemoveStatus(membership, statusCode, error)
         }
 
     private fun toAddStatus(
-        membership: DeviceResourceGroupMembership,
+        membership: M,
         statusCode: Int,
         error: String?,
     ): EntraStatus {
@@ -306,18 +319,20 @@ class MembershipService(
         }
         if (statusCode == 400 && error?.contains("object references already exist", ignoreCase = true) == true) {
             log.warn(
-                "Device with ID {} already a member of group with ID {}",
-                membership.entraDeviceRef,
-                membership.entraGroupRef,
+                "{} with ID {} already a member of group with ID {}",
+                memberTypeForLog,
+                memberIdOf(membership),
+                groupIdOf(membership),
             )
             return EntraStatus.NO_CHANGES
         }
 
         if (statusCode == 400 && error != null) {
             log.warn(
-                "Error adding device with ID {} to group with ID {}: {}",
-                membership.entraDeviceRef,
-                membership.entraGroupRef,
+                "Error adding {} with ID {} to group with ID {}: {}",
+                memberType,
+                memberIdOf(membership),
+                groupIdOf(membership),
                 error,
             )
             return EntraStatus.ERROR
@@ -325,9 +340,10 @@ class MembershipService(
 
         if (statusCode == 404) {
             log.warn(
-                "DeviceId: {} cannot be added to GroupId: {}. Error: {}",
-                membership.entraDeviceRef,
-                membership.entraGroupRef,
+                "{}Id: {} cannot be added to GroupId: {}. Error: {}",
+                memberTypeForLog,
+                memberIdOf(membership),
+                groupIdOf(membership),
                 error ?: UNKNOWN_ERROR,
             )
             return EntraStatus.ERROR
@@ -335,16 +351,17 @@ class MembershipService(
 
         if (statusCode == 429) {
             log.warn(
-                "Throttling limit while adding device {} to group {}",
-                membership.entraDeviceRef,
-                membership.entraGroupRef,
+                "Throttling limit while adding {} {} to group {}",
+                memberType,
+                memberIdOf(membership),
+                groupIdOf(membership),
             )
             return EntraStatus.FAILED
         }
 
         log.warn(
             "HTTP error while updating group {} in batch: status={} message={}",
-            membership.entraGroupRef,
+            groupIdOf(membership),
             statusCode,
             error ?: UNKNOWN_ERROR,
         )
@@ -352,7 +369,7 @@ class MembershipService(
     }
 
     private fun toRemoveStatus(
-        membership: DeviceResourceGroupMembership,
+        membership: M,
         statusCode: Int,
         error: String?,
     ): EntraStatus {
@@ -362,134 +379,73 @@ class MembershipService(
 
         if (statusCode == 404) {
             log.warn(
-                "Delete received for DeviceId: {} in GroupId: {}. Device not found in group, publishing 'removed' event to Kafka to keep state consistent.",
-                membership.entraDeviceRef,
-                membership.entraGroupRef,
+                "Delete received for {}Id: {} in GroupId: {}. {} not found in group, publishing 'removed' event to Kafka to keep state consistent.",
+                memberTypeForLog,
+                memberIdOf(membership),
+                groupIdOf(membership),
+                memberTypeForLog,
             )
             return EntraStatus.REMOVED
         }
 
         if (statusCode == 429) {
             log.warn(
-                "Throttling limit while removing device {} from group {}",
-                membership.entraDeviceRef,
-                membership.entraGroupRef,
+                "Throttling limit while removing {} {} from group {}",
+                memberType,
+                memberIdOf(membership),
+                groupIdOf(membership),
             )
             return EntraStatus.FAILED
         }
 
         log.error(
-            "HTTP error while trying to remove device {} from group {} in batch. status={} message={}",
-            membership.entraDeviceRef,
-            membership.entraGroupRef,
+            "HTTP error while trying to remove {} {} from group {} in batch. status={} message={}",
+            memberType,
+            memberIdOf(membership),
+            groupIdOf(membership),
             statusCode,
             error ?: UNKNOWN_ERROR,
         )
         return EntraStatus.FAILED
     }
 
-    private fun parseMembershipId(
-        membership: DeviceResourceGroupMembership,
-        messageKey: String,
-    ): DeviceMembershipId? =
-        try {
-            DeviceMembershipId(
-                UUID.fromString(membership.entraDeviceRef),
-                UUID.fromString(membership.entraGroupRef),
-            )
-        } catch (_: IllegalArgumentException) {
-            log.error(
-                "Invalid device/group UUIDs in membership message key {} (deviceRef={}, groupRef={})",
-                messageKey,
-                membership.entraDeviceRef,
-                membership.entraGroupRef,
-            )
-            publishResult(messageKey, membership, EntraStatus.ERROR)
-            return null
-        }
+    protected abstract val memberType: String
+    protected abstract val memberTypeForLog: String
+    protected abstract fun operationOf(membership: M): OperationType
+    protected abstract fun groupIdOf(membership: M): String
+    protected abstract fun memberIdOf(membership: M): String
+    protected abstract fun membershipIdOf(memberId: UUID, groupId: UUID): ID
+    protected abstract fun findExistingMemberships(ids: Collection<ID>): Map<ID, E>
+    protected abstract fun statusOf(existing: E): EntraStatus
+    protected abstract fun buildMembershipState(id: ID, existing: E?, status: EntraStatus): E
+    protected abstract fun saveMembershipStates(states: Collection<E>)
+    protected abstract fun publishResult(messageKey: String, membership: M, status: EntraStatus)
 
-    private fun shouldSkipOperation(
-        existing: DeviceMembershipEntity?,
-        operation: OperationType,
-    ): Boolean {
-        if (existing == null) {
-            return false
-        }
+    private data class PendingMembership<M : Any, ID : Any, E : Any>(
+        val messageKey: String,
+        val membership: M,
+        val membershipId: ID,
+        val existing: E?,
+    )
 
-        return when (operation) {
-            OperationType.ADD -> existing.status == EntraStatus.ADDED
-            OperationType.REMOVE -> existing.status == EntraStatus.REMOVED
-        }
-    }
+    private data class ParsedMembership<M : Any, ID : Any>(
+        val messageKey: String,
+        val membership: M,
+        val membershipId: ID,
+    )
 
-    private fun getNewMembershipStatus(
-        operation: OperationType,
-        status: EntraStatus,
-    ): EntraStatus {
-        if (status != EntraStatus.NO_CHANGES) {
-            return status
-        }
+    private data class MembershipResult<M : Any>(
+        val messageKey: String,
+        val membership: M,
+        val status: EntraStatus,
+    )
 
-        return when (operation) {
-            OperationType.ADD -> EntraStatus.ADDED
-            OperationType.REMOVE -> EntraStatus.REMOVED
-        }
-    }
-
-    private fun buildMembershipState(
-        id: DeviceMembershipId,
-        existing: DeviceMembershipEntity?,
-        status: EntraStatus,
-    ): DeviceMembershipEntity {
-        val now = OffsetDateTime.now()
-        return DeviceMembershipEntity(
-            id = id,
-            status = status,
-            createdAt = existing?.createdAt ?: now,
-            lastUpdatedAt = now,
-        )
-    }
-
-    private fun publishResult(
-        messageKey: String,
-        membership: DeviceResourceGroupMembership,
-        status: EntraStatus,
-    ) {
-        val entraDeviceMembershipDto =
-            EntraDeviceMembershipDto(
-                status,
-                membership.entraGroupRef,
-                membership.entraDeviceRef,
-            )
-        entraMembershipProducer.publish(messageKey, entraDeviceMembershipDto)
-    }
+    private data class ResolvedBatchResult<M : Any, ID : Any, E : Any>(
+        val pending: PendingMembership<M, ID, E>,
+        val status: EntraStatus,
+    )
 
     companion object {
-        private val log = LoggerFactory.getLogger(MembershipService::class.java)
-        private const val MAX_RETRIES = 2
+        private val log = LoggerFactory.getLogger(AbstractMembershipService::class.java)
     }
-
-    private data class PendingMembership(
-        val messageKey: String,
-        val membership: DeviceResourceGroupMembership,
-        val membershipId: DeviceMembershipId,
-        val existing: DeviceMembershipEntity?,
-    )
-
-    private data class ParsedMembership(
-        val messageKey: String,
-        val membership: DeviceResourceGroupMembership,
-        val membershipId: DeviceMembershipId,
-    )
-
-    private data class MembershipResult(
-        val messageKey: String,
-        val membership: DeviceResourceGroupMembership,
-        val status: EntraStatus,
-    )
-
-    private data class ResolvedBatchResult(
-        val pending: PendingMembership,
-        val status: EntraStatus,
-    )
 }

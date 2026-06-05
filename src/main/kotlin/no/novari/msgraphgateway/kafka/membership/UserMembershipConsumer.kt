@@ -6,19 +6,19 @@ import no.novari.kafka.consuming.ListenerConfiguration
 import no.novari.kafka.consuming.ParameterizedListenerContainerFactoryService
 import no.novari.kafka.topic.name.EventTopicNameParameters
 import no.novari.kafka.topic.name.TopicNamePrefixParameters
-import no.novari.msgraphgateway.membership.device.DeviceMembershipProcessingProperties
-import no.novari.msgraphgateway.membership.device.DeviceResourceGroupMembership
-import no.novari.msgraphgateway.services.member.MembershipService
+import no.novari.msgraphgateway.membership.MembershipProcessingProperties
+import no.novari.msgraphgateway.membership.user.UserResourceGroupMembership
+import no.novari.msgraphgateway.services.member.UserMembershipService
 import org.springframework.context.annotation.Bean
 import org.springframework.kafka.listener.ConcurrentMessageListenerContainer
 import org.springframework.stereotype.Component
 
 @Component
-class MembershipConsumer(
+class UserMembershipConsumer(
     private val parameterizedListenerContainerFactoryService: ParameterizedListenerContainerFactoryService,
     private val errorHandlerFactory: ErrorHandlerFactory,
-    private val membershipService: MembershipService,
-    private val properties: DeviceMembershipProcessingProperties,
+    private val membershipService: UserMembershipService,
+    private val properties: MembershipProcessingProperties,
 ) {
     private fun listenerConfiguration() =
         ListenerConfiguration
@@ -29,10 +29,10 @@ class MembershipConsumer(
             .continueFromPreviousOffsetOnAssignment()
             .build()
 
-    private val topic: EventTopicNameParameters =
+    val topic: EventTopicNameParameters =
         EventTopicNameParameters
             .builder()
-            .eventName("resource-group-membership-device")
+            .eventName("resource-group-membership-user")
             .topicNamePrefixParameters(
                 TopicNamePrefixParameters
                     .stepBuilder()
@@ -42,18 +42,21 @@ class MembershipConsumer(
             ).build()
 
     @Bean
-    fun kontrollMembershipConsumer(): ConcurrentMessageListenerContainer<String, DeviceResourceGroupMembership> =
+    fun kontrollUserMembershipConsumer(): ConcurrentMessageListenerContainer<String, UserResourceGroupMembership> =
         parameterizedListenerContainerFactoryService
             .createBatchListenerContainerFactory(
-                DeviceResourceGroupMembership::class.java,
+                UserResourceGroupMembership::class.java,
                 { batch -> membershipService.processKontrollMembershipBatch(batch) },
                 listenerConfiguration(),
                 errorHandlerFactory.createErrorHandler(
                     ErrorHandlerConfiguration
-                        .stepBuilder<DeviceResourceGroupMembership>()
+                        .stepBuilder<UserResourceGroupMembership>()
                         .noRetries()
                         .skipFailedRecords()
                         .build(),
                 ),
+                { container ->
+                    container.setConcurrency(properties.consumerConcurrency)
+                },
             ).createContainer(topic)
 }
