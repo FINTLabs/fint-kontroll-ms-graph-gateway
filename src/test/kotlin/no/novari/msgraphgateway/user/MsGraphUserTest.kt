@@ -81,6 +81,22 @@ class MsGraphUserTest {
         }
 
     @Test
+    fun makeSureAllUsersAreProcessedOnEachPage() : Unit = runBlocking {
+        val msGraphUser = spyk(createMsGraphUser())
+        var importCount = 0
+        val started = CompletableDeferred<Unit>()
+        val finishFirstRun = CompletableDeferred<Unit>()
+        coEvery { msGraphUser.startFullImport(any()) } coAnswers {
+            importCount++
+            if (importCount == 1) {
+                started.complete(Unit)
+                finishFirstRun.await()
+            }
+        }
+        msGraphUser.requestFullImport(false)
+        started.await()
+    }
+    @Test
     fun requestFullImportDoesNotStartSecondRunWhileFirstIsRunning(): Unit =
         runBlocking {
             val started = CompletableDeferred<Unit>()
