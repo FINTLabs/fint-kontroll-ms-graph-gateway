@@ -1,5 +1,6 @@
 package no.novari.msgraphgateway.user
 
+import com.microsoft.graph.models.User
 import com.microsoft.graph.serviceclient.GraphServiceClient
 import com.microsoft.graph.users.UsersRequestBuilder
 import com.microsoft.graph.users.count.CountRequestBuilder
@@ -19,10 +20,13 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import no.novari.msgraphgateway.config.ConfigUser
 import no.novari.msgraphgateway.entra.DeltaLinkStore
+import org.hibernate.query.Page
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import java.util.UUID
+import kotlin.random.Random
 
 @ExperimentalCoroutinesApi
 class MsGraphUserTest {
@@ -81,20 +85,32 @@ class MsGraphUserTest {
         }
 
     @Test
-    fun makeSureAllUsersAreProcessedOnEachPage() : Unit = runBlocking {
+    fun makeSureAllUsersAreProcessedOnPage() : Unit = runBlocking {
         val msGraphUser = spyk(createMsGraphUser())
-        var importCount = 0
-        val started = CompletableDeferred<Unit>()
-        val finishFirstRun = CompletableDeferred<Unit>()
-        coEvery { msGraphUser.startFullImport(any()) } coAnswers {
-            importCount++
-            if (importCount == 1) {
-                started.complete(Unit)
-                finishFirstRun.await()
-            }
+
+        every { deltaRb.get(any()) } returns mockDeltaPage(
+            deltaLink = "new_deltalink",
+            userCount = 100,
+            )
+
+        var userCounter = 0
+
+        coEvery {
+            msGraphUser.pageThroughUsers(any(), any(),any(), any())
+        } coAnswers {
+            val result = callOriginal() as MsGraphUser.PageResult
+            println("totalUsersSeen=${result.totalUsersSeen}")
+            userCounter += result.totalUsersSeen
+            result
         }
-        msGraphUser.requestFullImport(false)
-        started.await()
+
+        msGraphUser.pullAllUsersDelta()
+
+        assertEquals(100, userCounter)
+
+        coVerify { msGraphUser.pageThroughUsers(any(), any(), any(), any()) }
+        verify { deltaRb.get(any()) }
+
     }
     @Test
     fun requestFullImportDoesNotStartSecondRunWhileFirstIsRunning(): Unit =
@@ -192,11 +208,22 @@ class MsGraphUserTest {
             userExternalRepository = userExternalRepository,
         )
 
-    private fun mockDeltaPage(deltaLink: String): DeltaGetResponse =
+    private fun mockDeltaPage(
+        deltaLink: String,
+        userCount: Int = 0
+    ): DeltaGetResponse =
         mockk(relaxed = true) {
-            every { value } returns emptyList()
+            every { value } returns List(userCount) { randomUser() }
             every { odataNextLink } returns null
             every { odataDeltaLink } returns deltaLink
+        }
+
+    private fun randomUser(): User =
+        mockk(relaxed = true) {
+            every { id } returns UUID.randomUUID().toString()
+            every { displayName } returns "User-${Random.nextInt(1000, 9999)}"
+            every { userPrincipalName } returns "user${Random.nextInt(1000, 9999)}@example.com"
+            every { mail } returns "user${Random.nextInt(1000, 9999)}@example.com"
         }
 
     private fun getPrivateField(

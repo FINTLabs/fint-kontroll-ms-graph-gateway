@@ -280,7 +280,7 @@ class MsGraphUser(
         return true
     }
 
-    private suspend fun pageThroughUsers(
+     suspend fun pageThroughUsers(
         firstPage: DeltaGetResponse?,
         isFullImport: Boolean,
         notSeenIncremented: MutableSet<UUID>,
@@ -387,7 +387,7 @@ class MsGraphUser(
         log.info("Finished {} in {}m {}s", operation, minutes, seconds)
     }
 
-    private data class PageResult(
+    data class PageResult(
         val totalUsersSeen: Int,
         val publishedUsers: Int,
     )
