@@ -9,6 +9,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import no.novari.msgraphgateway.entra.EntraStatus
 import no.novari.msgraphgateway.kafka.OperationType
@@ -22,6 +23,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 private const val UNKNOWN_ERROR = "Unknown error"
 private const val MAX_RETRIES = 2
+private const val RETRY_BACKOFF_BASE_MS = 500L
 
 abstract class AbstractMembershipService<M : Any, ID : Any, E : Any>(
     private val graphServiceClient: GraphServiceClient,
@@ -29,106 +31,101 @@ abstract class AbstractMembershipService<M : Any, ID : Any, E : Any>(
     private val defaultDispatcher: CoroutineDispatcher,
 ) {
     open fun processKontrollMembershipBatch(records: List<ConsumerRecord<String, M>>) {
+        runBlocking(defaultDispatcher) {
+            processKontrollMembershipBatchCore(records)
+        }
+    }
+
+    private suspend fun processKontrollMembershipBatchCore(records: List<ConsumerRecord<String, M>>) {
         if (records.isEmpty()) {
             return
         }
 
         log.info("Received membership batch with {} records", records.size)
-        val validMemberships = mutableListOf<ParsedMembership<M, ID>>()
-        val pendingMemberships = mutableListOf<PendingMembership<M, ID, E>>()
-        val statesToSave = mutableListOf<E>()
-        val resultsToPublish = mutableListOf<MembershipResult<M>>()
 
-        records.forEach { record ->
-            val messageKey = record.key()
-            if (messageKey == null) {
-                log.warn("Received membership with null key, skipping record")
-                return@forEach
-            }
-
-            val membership = record.value()
-            if (membership == null) {
-                log.warn("Received null membership for key: {}", messageKey)
-                return@forEach
-            }
-
-            validMemberships +=
-                ParsedMembership(
-                    messageKey,
-                    membership,
-                    parseMembershipId(membership, messageKey) ?: return@forEach,
-                )
-        }
-
-        if (validMemberships.isEmpty()) {
+        val validatedMemberships = records.mapNotNull(::toValidatedMembership)
+        if (validatedMemberships.isEmpty()) {
             return
         }
 
         val existingMembershipsById =
             findExistingMemberships(
-                validMemberships.map { it.membershipId }.distinct(),
+                validatedMemberships.map { it.membershipId }.distinct(),
             )
 
-        validMemberships.forEach { parsed ->
-            val existing = existingMembershipsById[parsed.membershipId]
+        val statesToSave = mutableListOf<E>()
+        val resultsToPublish = mutableListOf<MembershipResult<M>>()
+        val pendingMemberships = mutableListOf<PendingMembership<M, ID, E>>()
 
-            if (
-                MembershipStatusResolver.shouldSkipOperation(
-                    existing?.let(::statusOf),
-                    operationOf(parsed.membership),
+        validatedMemberships.forEach { validatedMembership ->
+            val existing = existingMembershipsById[validatedMembership.membershipId]
+            val operation = operationOf(validatedMembership.membership)
+
+            if (MembershipStatusResolver.shouldSkipOperation(existing?.let(::statusOf), operation)) {
+                resultsToPublish += MembershipResult(
+                    messageKey = validatedMembership.messageKey,
+                    membership = validatedMembership.membership,
+                    status = EntraStatus.NO_CHANGES,
                 )
-            ) {
-                val kafkaStatus = EntraStatus.NO_CHANGES
-                val persistedStatus =
-                    MembershipStatusResolver.persistedStatus(
-                        operationOf(parsed.membership),
-                        kafkaStatus,
-                    )
-                statesToSave += buildMembershipState(parsed.membershipId, existing, persistedStatus)
-                resultsToPublish += MembershipResult(parsed.messageKey, parsed.membership, kafkaStatus)
+
                 log.debug(
                     "Skipped duplicate membership operation {} for {} {} and group {}",
-                    operationOf(parsed.membership),
+                    operation,
                     memberType,
-                    memberIdOf(parsed.membership),
-                    groupIdOf(parsed.membership),
+                    memberIdOf(validatedMembership.membership),
+                    groupIdOf(validatedMembership.membership),
                 )
             } else {
-                pendingMemberships +=
-                    PendingMembership(
-                        parsed.messageKey,
-                        parsed.membership,
-                        parsed.membershipId,
-                        existing,
-                    )
+                pendingMemberships += PendingMembership(
+                    messageKey = validatedMembership.messageKey,
+                    membership = validatedMembership.membership,
+                    membershipId = validatedMembership.membershipId,
+                    existing = existing,
+                )
             }
         }
 
-        val resolvedResults =
-            runBlocking {
-                processPendingMemberships(pendingMemberships)
-            }
+        processPendingMemberships(pendingMemberships).forEach { result ->
+            val operation = operationOf(result.pending.membership)
+            val persistedStatus = MembershipStatusResolver.persistedStatus(operation, result.status)
 
-        resolvedResults.forEach { result ->
-            val persistedStatus =
-                MembershipStatusResolver.persistedStatus(
-                    operationOf(result.pending.membership),
-                    result.status,
-                )
-            statesToSave +=
-                buildMembershipState(
-                    result.pending.membershipId,
-                    result.pending.existing,
-                    persistedStatus,
-                )
-            resultsToPublish += MembershipResult(result.pending.messageKey, result.pending.membership, result.status)
+            statesToSave += buildMembershipState(
+                result.pending.membershipId,
+                result.pending.existing,
+                persistedStatus,
+            )
+            resultsToPublish += MembershipResult(
+                messageKey = result.pending.messageKey,
+                membership = result.pending.membership,
+                status = result.status,
+            )
         }
 
-        saveMembershipStates(statesToSave)
-
-        resultsToPublish.forEach { result ->
-            publishResult(result.messageKey, result.membership, result.status)
+        if (statesToSave.isNotEmpty()) {
+            saveMembershipStates(statesToSave)
         }
+        resultsToPublish.forEach(::publishResult)
+    }
+
+    private fun toValidatedMembership(record: ConsumerRecord<String, M>): ValidatedMembership<M, ID>? {
+        val messageKey = record.key()
+        if (messageKey == null) {
+            log.warn("Received membership with null key, skipping record")
+            return null
+        }
+
+        val membership = record.value()
+        if (membership == null) {
+            log.warn("Received null membership for key: {}", messageKey)
+            return null
+        }
+
+        val membershipId = parseMembershipId(membership, messageKey) ?: return null
+        return ValidatedMembership(
+            messageKey = messageKey,
+            membership = membership,
+            membershipId = membershipId,
+        )
     }
 
     private fun parseMembershipId(
@@ -153,7 +150,7 @@ abstract class AbstractMembershipService<M : Any, ID : Any, E : Any>(
             null
         }
 
-    private fun processGraphBatchChunkWithRetries(
+    private suspend fun processGraphBatchChunkWithRetries(
         chunk: List<PendingMembership<M, ID, E>>,
     ): List<ResolvedBatchResult<M, ID, E>> {
         var failed = chunk
@@ -178,12 +175,15 @@ abstract class AbstractMembershipService<M : Any, ID : Any, E : Any>(
             }
 
             retryCount++
+            val backoffMs = RETRY_BACKOFF_BASE_MS * retryCount
             log.warn(
-                "Batch membership operations failed, retrying {} records ({}/{})",
+                "Batch membership operations failed, retrying {} records after {} ms ({}/{})",
                 toRetry.size,
+                backoffMs,
                 retryCount,
                 MAX_RETRIES,
             )
+            delay(backoffMs)
             failed = toRetry
         }
 
@@ -235,10 +235,20 @@ abstract class AbstractMembershipService<M : Any, ID : Any, E : Any>(
             try {
                 graphServiceClient.batchRequestBuilder.post(batchRequestContent, null)
             } catch (e: IOException) {
-                log.error("I/O error while executing membership batch request", e)
+                log.error(
+                    "I/O error while executing membership batch request for {} {} records",
+                    memberships.size,
+                    memberType,
+                    e,
+                )
                 return memberships.associateWith { EntraStatus.FAILED }
-            } catch (e: Exception) {
-                log.error("Unexpected error while executing membership batch request", e)
+            } catch (e: RuntimeException) {
+                log.error(
+                    "Unexpected error while executing membership batch request for {} {} records",
+                    memberships.size,
+                    memberType,
+                    e,
+                )
                 return memberships.associateWith { EntraStatus.FAILED }
             }
 
@@ -327,13 +337,13 @@ abstract class AbstractMembershipService<M : Any, ID : Any, E : Any>(
             return EntraStatus.NO_CHANGES
         }
 
-        if (statusCode == 400 && error != null) {
+        if (statusCode == 400) {
             log.warn(
                 "Error adding {} with ID {} to group with ID {}: {}",
                 memberType,
                 memberIdOf(membership),
                 groupIdOf(membership),
-                error,
+                error ?: UNKNOWN_ERROR,
             )
             return EntraStatus.ERROR
         }
@@ -421,17 +431,21 @@ abstract class AbstractMembershipService<M : Any, ID : Any, E : Any>(
     protected abstract fun saveMembershipStates(states: Collection<E>)
     protected abstract fun publishResult(messageKey: String, membership: M, status: EntraStatus)
 
+    private fun publishResult(result: MembershipResult<M>) {
+        publishResult(result.messageKey, result.membership, result.status)
+    }
+
+    private data class ValidatedMembership<M : Any, ID : Any>(
+        val messageKey: String,
+        val membership: M,
+        val membershipId: ID,
+    )
+
     private data class PendingMembership<M : Any, ID : Any, E : Any>(
         val messageKey: String,
         val membership: M,
         val membershipId: ID,
         val existing: E?,
-    )
-
-    private data class ParsedMembership<M : Any, ID : Any>(
-        val messageKey: String,
-        val membership: M,
-        val membershipId: ID,
     )
 
     private data class MembershipResult<M : Any>(

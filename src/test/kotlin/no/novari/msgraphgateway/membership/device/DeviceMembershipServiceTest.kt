@@ -88,26 +88,17 @@ class DeviceMembershipServiceTest {
                 lastUpdatedAt = OffsetDateTime.parse("2026-04-29T10:00:00Z"),
             )
         val membershipId = DeviceMembershipId(deviceRef, groupRef)
-        val savedSlot = slot<Collection<DeviceMembershipEntity>>()
 
         every {
             deviceMembershipEntityRepository.findAllByIds(listOf(membershipId))
         } returns mapOf(membershipId to existing)
-        every {
-            deviceMembershipEntityRepository.saveAll(
-                capture(savedSlot),
-            )
-        } returns Unit
 
         service.processKontrollMembershipBatch(listOf(record("duplicate-add", membership)))
 
-        assertEquals(1, savedSlot.captured.size)
-        assertEquals(EntraStatus.ADDED, savedSlot.captured.single().status)
-        assertEquals(existing.createdAt, savedSlot.captured.single().createdAt)
         verify(exactly = 1) {
             deviceMembershipEntityRepository.findAllByIds(listOf(membershipId))
         }
-        verify(exactly = 1) { deviceMembershipEntityRepository.saveAll(any()) }
+        verify(exactly = 0) { deviceMembershipEntityRepository.saveAll(any()) }
         verify(exactly = 1) {
             entraDeviceMembershipProducer.publish(
                 "duplicate-add",
@@ -279,7 +270,7 @@ class DeviceMembershipServiceTest {
         key: String,
         value: DeviceResourceGroupMembership,
     ): ConsumerRecord<String, DeviceResourceGroupMembership> =
-        ConsumerRecord("kontroll-resource-group-membership-device", 0, 0, key, value)
+        ConsumerRecord("resource-group-membership-device", 0, 0, key, value)
 
     private fun everyGraphBatchResponse(
         statusCode: Int,

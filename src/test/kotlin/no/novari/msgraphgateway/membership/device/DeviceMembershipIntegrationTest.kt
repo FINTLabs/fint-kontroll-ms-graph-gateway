@@ -74,6 +74,9 @@ import java.util.concurrent.atomic.AtomicInteger
         "novari.scheduler.user.delta.fixed-delay-ms=86400000",
         "novari.scheduler.user.full-import.cron=-",
         "novari.scheduler.user.weekly-publish.cron=-",
+        "novari.scheduler.device.delta.initial-delay-ms=86400000",
+        "novari.scheduler.device.delta.fixed-delay-ms=86400000",
+        "novari.scheduler.device.full-import.cron=-",
         "ms-graph.membership.consumer-concurrency=1",
         "ms-graph.membership.consumer-max-poll-records=500",
         "ms-graph.membership.graph-batch-size=20",
@@ -612,7 +615,7 @@ class DeviceMembershipIntegrationTest {
         private const val GRAPH_RESPONSE_DELAY_MS = 100L
         private val CORRECTNESS_TEST_TIMEOUT: Duration = Duration.ofMinutes(4)
         private val PERFORMANCE_TEST_TIMEOUT: Duration = Duration.ofMinutes(10)
-        private const val INPUT_TOPIC = "fintlabs-no.kontroll.event.kontroll-resource-group-membership-device"
+        private const val INPUT_TOPIC = "fintlabs-no.kontroll.event.resource-group-membership-device"
         private const val RESULT_TOPIC = "fintlabs-no.kontroll.event.entra-device-group-membership"
 
         @Container
