@@ -2,7 +2,7 @@ package no.novari.msgraphgateway.controller
 
 import no.fintlabs.util.OnlyDevelopers
 import no.novari.msgraphgateway.device.MsGraphDevice
-import no.novari.msgraphgateway.service.DeviceService
+import no.novari.msgraphgateway.services.DeviceService
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping

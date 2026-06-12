@@ -12,6 +12,14 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
+import no.novari.msgraphgateway.dto.EntraDeviceMembershipDto
+import no.novari.msgraphgateway.entra.EntraStatus
+import no.novari.msgraphgateway.kafka.OperationType
+import no.novari.msgraphgateway.kafka.membership.EntraMembershipProducer
+import no.novari.msgraphgateway.repository.device.DeviceMembershipEntity
+import no.novari.msgraphgateway.repository.device.DeviceMembershipEntityRepository
+import no.novari.msgraphgateway.repository.device.DeviceMembershipId
+import no.novari.msgraphgateway.services.MembershipService
 import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.Response
@@ -51,7 +59,7 @@ class MembershipServiceTest {
         verify(exactly = 1) {
             entraMembershipProducer.publish(
                 messageKey,
-                EntraDeviceMembership(
+                EntraDeviceMembershipDto(
                     code = EntraStatus.ERROR,
                     entraGroupRef = membership.entraGroupRef,
                     entraDeviceRef = membership.entraDeviceRef,
@@ -101,7 +109,7 @@ class MembershipServiceTest {
         verify(exactly = 1) {
             entraMembershipProducer.publish(
                 "duplicate-add",
-                EntraDeviceMembership(
+                EntraDeviceMembershipDto(
                     code = EntraStatus.NO_CHANGES,
                     entraGroupRef = groupRef.toString(),
                     entraDeviceRef = deviceRef.toString(),
@@ -134,7 +142,7 @@ class MembershipServiceTest {
         verify(exactly = 1) {
             entraMembershipProducer.publish(
                 "graph-status",
-                EntraDeviceMembership(
+                EntraDeviceMembershipDto(
                     code = testCase.expectedPublishedStatus,
                     entraGroupRef = groupRef.toString(),
                     entraDeviceRef = deviceRef.toString(),

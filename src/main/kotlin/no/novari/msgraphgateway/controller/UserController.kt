@@ -1,8 +1,8 @@
 package no.novari.msgraphgateway.controller
 
 import no.fintlabs.util.OnlyDevelopers
-import no.novari.msgraphgateway.service.GroupService
-import no.novari.msgraphgateway.service.UserService
+import no.novari.msgraphgateway.services.GroupService
+import no.novari.msgraphgateway.services.UserService
 import no.novari.msgraphgateway.user.MsGraphUser
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity

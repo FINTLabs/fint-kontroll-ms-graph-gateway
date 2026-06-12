@@ -9,6 +9,8 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import no.novari.msgraphgateway.config.ConfigUser
 import no.novari.msgraphgateway.entra.DeltaLinkStore
+import no.novari.msgraphgateway.repository.user.UserExternalRepository
+import no.novari.msgraphgateway.repository.user.UserRepository
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
@@ -238,7 +240,7 @@ class MsGraphUser(
         val staleUserIds =
             withContext(Dispatchers.IO) {
                 userRepository.findStaleObjectIds(startTime)
-            }.filter { notSeenIncremented.add(it) } // add() returnerer false hvis allerede der
+            }.filter { notSeenIncremented.add(it) }
 
         log.info("Marking {} stale users as not seen", staleUserIds.size)
         withContext(Dispatchers.IO) {

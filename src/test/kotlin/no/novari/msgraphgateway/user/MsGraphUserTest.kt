@@ -19,6 +19,8 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import no.novari.msgraphgateway.config.ConfigUser
 import no.novari.msgraphgateway.entra.DeltaLinkStore
+import no.novari.msgraphgateway.repository.user.UserExternalRepository
+import no.novari.msgraphgateway.repository.user.UserRepository
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach

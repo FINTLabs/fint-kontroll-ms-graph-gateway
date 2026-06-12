@@ -1,0 +1,36 @@
+@file:Suppress("ktlint:standard:no-wildcard-imports")
+
+package no.novari.msgraphgateway.repository.device
+
+import no.novari.msgraphgateway.services.Checksum
+import java.time.Instant
+import java.util.*
+
+interface DeviceStateRepository {
+    data class UpsertRow(
+        val objectId: UUID,
+        val checksum: Checksum,
+        val lastSeenAt: Instant,
+    )
+
+    fun batchUpsert(rows: List<UpsertRow>)
+
+    fun findStaleObjectIds(cutoff: Instant): List<UUID>
+
+    fun batchUpsertReturningChanged(rows: List<UpsertRow>): Set<UUID>
+
+    fun deleteById(objectId: UUID)
+
+    fun deleteByIdsReturningObjectIds(objectIds: Collection<UUID>): List<UUID>
+
+    fun findStaleObjectIdsWithNotSeenCountGreaterThan(
+        cutoff: Instant,
+        minNotSeenCount: Int,
+    ): List<UUID>
+
+    fun incrementNotSeenCount(objectIds: Collection<UUID>)
+
+    fun existsById(objectId: UUID): Boolean
+
+    fun getCount(): Int
+}

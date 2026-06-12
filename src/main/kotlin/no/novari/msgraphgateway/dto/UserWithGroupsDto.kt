@@ -1,7 +1,7 @@
 package no.novari.msgraphgateway.dto
 
-import no.novari.msgraphgateway.entra.EntraGroup
-import no.novari.msgraphgateway.entra.EntraUser
+import no.novari.msgraphgateway.entra.group.EntraGroup
+import no.novari.msgraphgateway.entra.user.EntraUser
 import java.io.Serializable
 
 data class UserWithGroupsDto(
