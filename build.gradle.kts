@@ -1,5 +1,5 @@
 plugins {
-    id("org.springframework.boot") version "3.5.11"
+    id("org.springframework.boot") version "3.5.15"
     id("io.spring.dependency-management") version "1.1.7"
     id("org.jlleitschuh.gradle.ktlint") version "14.0.1"
 
@@ -49,16 +49,18 @@ dependencies {
     implementation("no.novari:kafka:6.0.0")
 
     // Microsoft Graph SDK (Java)
-    implementation("com.microsoft.graph:microsoft-graph:6.20.0")
+    implementation("com.microsoft.graph:microsoft-graph:6.65.0")
     implementation("com.azure:azure-identity:1.18.3")
+    implementation("org.apache.commons:commons-lang3:3.20.0")
+    implementation("org.apache.commons:commons-compress:1.28.0")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test")
     testImplementation("io.mockk:mockk:1.13.10")
     testImplementation("org.jetbrains.kotlin:kotlin-reflect")
-    testImplementation("org.testcontainers:junit-jupiter:1.19.7")
-    testImplementation("org.testcontainers:kafka:1.19.7")
-    testImplementation("org.testcontainers:postgresql:1.19.7")
+    testImplementation("org.testcontainers:junit-jupiter:1.19.8")
+    testImplementation("org.testcontainers:kafka:1.19.8")
+    testImplementation("org.testcontainers:postgresql:1.19.8")
     testImplementation("org.wiremock:wiremock:3.13.2")
 }
 
