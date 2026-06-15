@@ -300,17 +300,31 @@ class EntraGroupSyncService(
     private fun Group.matchesConfiguredGroup(): Boolean {
         val name = displayName ?: return false
 
-        val hasPrefix =
-            configGroup.prefix
-                ?.takeIf { it.isNotBlank() }
-                ?.let { name.startsWith(it) }
-                ?: true
+        val prefix = configGroup.prefix?.trim().orEmpty()
+        val suffix = configGroup.suffix?.trim().orEmpty()
+        val mode = configGroup.filterMode
 
-        val hasSuffix =
-            configGroup.suffix
-                ?.takeIf { it.isNotBlank() }
-                ?.let { name.endsWith(it) }
-                ?: true
+        val matchesName =
+            when (mode) {
+                ConfigGroup.FilterMode.NONE -> {
+                    true
+                }
+
+                ConfigGroup.FilterMode.PREFIX -> {
+                    prefix.isNotBlank() && name.startsWith(prefix, ignoreCase = true)
+                }
+
+                ConfigGroup.FilterMode.SUFFIX -> {
+                    suffix.isNotBlank() && name.endsWith(suffix, ignoreCase = true)
+                }
+
+                ConfigGroup.FilterMode.BOTH -> {
+                    prefix.isNotBlank() &&
+                        suffix.isNotBlank() &&
+                        name.startsWith(prefix, ignoreCase = true) &&
+                        name.endsWith(suffix, ignoreCase = true)
+                }
+            }
 
         val hasResourceGroupId =
             configGroup.resourceGroupIdAttribute
@@ -318,7 +332,7 @@ class EntraGroupSyncService(
                 ?.let { attr -> additionalData.containsKey(attr) }
                 ?: true
 
-        return hasPrefix && hasSuffix && hasResourceGroupId
+        return matchesName && hasResourceGroupId
     }
 
     private fun parseObjectIdOrNull(groupId: String?): UUID? =

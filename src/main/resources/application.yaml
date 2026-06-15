@@ -83,6 +83,7 @@ ms-graph:
     resource-group-id-attribute:
     prefix: "-pre-"
     suffix: "-suff-"
+    filter-mode: SUFFIX
     allow-group-update: false
     allow-group-delete: false
     unique-name-prefix:
