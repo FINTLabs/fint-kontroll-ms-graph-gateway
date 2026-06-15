@@ -13,6 +13,7 @@ import no.novari.msgraphgateway.services.EntraGroupSyncService
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
+import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.CompletionException
 import java.util.concurrent.atomic.AtomicBoolean
@@ -189,6 +190,7 @@ class MsGraphGroup(
     }
 
     suspend fun startFullImport(republishAll: Boolean = false) {
+        val cutoff = Instant.now()
         val trackingId = UUID.randomUUID().toString()
         val selection = configGroup.getGroupAttributesNotMembers()
 
@@ -222,10 +224,14 @@ class MsGraphGroup(
                 republishAll = republishAll,
             )
 
+        val deletedGroups =
+            groupSyncService.finishFullImport(cutoff)
+
         log.info(
-            "Full import of groups completed (fetchedTotal={}, publishedChanged={})",
+            "Full import of groups completed (fetchedTotal={}, publishedChanged={}, deleted={})",
             result.totalGroupsSeen,
             result.publishedGroups,
+            deletedGroups,
         )
     }
 
