@@ -48,8 +48,24 @@ class ResourceGroupConsumerService(
         }
 
         val existingGroupId =
-            resourceGroup.identityProviderGroupObjectId
-                ?: entraGroupCommandService.findGroupIdByResourceGroupId(resourceGroup.id)
+            try {
+                resourceGroup.identityProviderGroupObjectId
+                    ?: entraGroupCommandService.findGroupIdByResourceGroupId(resourceGroup.id)
+            } catch (e: IllegalStateException) {
+                log.error(
+                    "Skipping ResourceGroupId {} because multiple matching Entra groups were found",
+                    resourceGroup.id,
+                    e,
+                )
+                return
+            } catch (e: Exception) {
+                log.error(
+                    "Failed looking up Entra group for ResourceGroupId {}; skipping upsert",
+                    resourceGroup.id,
+                    e,
+                )
+                return
+            }
 
         if (existingGroupId.isNullOrBlank()) {
             log.info("New ResourceGroup detected: {}. Creating group in Entra", resourceGroup.resourceName)
@@ -58,10 +74,22 @@ class ResourceGroupConsumerService(
         }
 
         if (configGroup.allowGroupUpdate == true) {
-            log.info("Updating existing Entra group {} for ResourceGroupId {}", existingGroupId, resourceGroup.id)
-            entraGroupCommandService.updateGroup(resourceGroup.copy(identityProviderGroupObjectId = existingGroupId))
+            log.info(
+                "Updating existing Entra group {} for ResourceGroupId {}",
+                existingGroupId,
+                resourceGroup.id,
+            )
+
+            entraGroupCommandService.updateGroup(
+                resourceGroup.copy(
+                    identityProviderGroupObjectId = existingGroupId,
+                ),
+            )
         } else {
-            log.warn("ResourceGroupId {} already exists in Entra, but allowGroupUpdate=false", resourceGroup.id)
+            log.warn(
+                "ResourceGroupId {} already exists in Entra, but allowGroupUpdate=false",
+                resourceGroup.id,
+            )
         }
     }
 

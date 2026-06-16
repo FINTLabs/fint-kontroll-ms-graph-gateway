@@ -12,6 +12,11 @@ class EntraGroupCommandService(
     private val graphServiceClient: GraphServiceClient,
     private val configGroup: ConfigGroup,
 ) {
+    private enum class GroupLookupOperation {
+        UPSERT,
+        DELETE,
+    }
+
     fun createGroup(resourceGroup: ResourceGroup) {
         val group =
             Group().apply {
@@ -27,11 +32,22 @@ class EntraGroupCommandService(
                     }
             }
 
-        graphServiceClient
-            .groups()
-            .post(group)
-
-        log.info("Created Entra group for ResourceGroupId {}", resourceGroup.id)
+        runCatching {
+            graphServiceClient
+                .groups()
+                .post(group)
+        }.onSuccess {
+            log.info(
+                "Created Entra group for ResourceGroupId {}",
+                resourceGroup.id,
+            )
+        }.onFailure {
+            log.error(
+                "Failed creating Entra group for ResourceGroupId {}",
+                resourceGroup.id,
+                it,
+            )
+        }
     }
 
     fun updateGroup(resourceGroup: ResourceGroup) {
@@ -56,47 +72,134 @@ class EntraGroupCommandService(
                     }
             }
 
-        graphServiceClient
-            .groups()
-            .byGroupId(groupId)
-            .patch(group)
-
-        log.info("Updated Entra group {} for ResourceGroupId {}", groupId, resourceGroup.id)
+        runCatching {
+            graphServiceClient
+                .groups()
+                .byGroupId(groupId)
+                .patch(group)
+        }.onSuccess {
+            log.info(
+                "Updated Entra group {} for ResourceGroupId {}",
+                groupId,
+                resourceGroup.id,
+            )
+        }.onFailure {
+            log.error(
+                "Failed updating Entra group {} for ResourceGroupId {}",
+                groupId,
+                resourceGroup.id,
+                it,
+            )
+        }
     }
 
     fun deleteGroup(resourceGroupId: String) {
-        val groupId = findGroupIdByResourceGroupId(resourceGroupId)
+        val groupId =
+            try {
+                findGroupIdByResourceGroupId(resourceGroupId)
+            } catch (e: IllegalStateException) {
+                log.error(
+                    "Skipping delete for ResourceGroupId {} because multiple matching Entra groups were found",
+                    resourceGroupId,
+                    e,
+                )
+                return
+            } catch (e: Exception) {
+                log.error(
+                    "Failed looking up Entra group for ResourceGroupId {}; skipping delete",
+                    resourceGroupId,
+                    e,
+                )
+                return
+            }
 
         if (groupId.isNullOrBlank()) {
-            log.warn("Could not find Entra group for ResourceGroupId {}; skipping delete", resourceGroupId)
+            log.warn(
+                "Could not find Entra group for ResourceGroupId {}; skipping delete",
+                resourceGroupId,
+            )
             return
         }
 
-        graphServiceClient
-            .groups()
-            .byGroupId(groupId)
-            .delete()
-
-        log.info("Deleted Entra group {} for ResourceGroupId {}", groupId, resourceGroupId)
+        runCatching {
+            graphServiceClient
+                .groups()
+                .byGroupId(groupId)
+                .delete()
+        }.onSuccess {
+            log.info(
+                "Deleted Entra group {} for ResourceGroupId {}",
+                groupId,
+                resourceGroupId,
+            )
+        }.onFailure {
+            log.error(
+                "Failed deleting Entra group {} for ResourceGroupId {}",
+                groupId,
+                resourceGroupId,
+                it,
+            )
+        }
     }
 
     fun findGroupIdByResourceGroupId(resourceGroupId: String?): String? {
         if (resourceGroupId.isNullOrBlank()) return null
 
-        val attr = configGroup.resourceGroupIdAttribute ?: return null
+        val attr =
+            configGroup.resourceGroupIdAttribute
+                ?.takeIf { it.isNotBlank() }
+                ?: return null
 
-        val groups =
+        val escapedResourceGroupId = resourceGroupId.replace("'", "''")
+        val groups = mutableListOf<Group>()
+
+        var response =
             graphServiceClient
                 .groups()
                 .get { req ->
+                    req.queryParameters?.filter = "$attr eq '$escapedResourceGroupId'"
                     req.queryParameters?.select = arrayOf("id", "displayName", attr)
-                }?.value
-                ?: return null
+                }
 
-        return groups
-            .firstOrNull { group ->
-                group.additionalData[attr]?.toString() == resourceGroupId
-            }?.id
+        while (response != null) {
+            groups += response.value.orEmpty()
+
+            response =
+                response.odataNextLink
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { nextLink ->
+                        graphServiceClient
+                            .groups()
+                            .withUrl(nextLink)
+                            .get()
+                    }
+        }
+
+        return when {
+            groups.isEmpty() -> {
+                null
+            }
+
+            groups.size == 1 -> {
+                groups.single().id
+            }
+
+            else -> {
+                log.error(
+                    "Found {} groups with same resourceID {}={}:\n{}",
+                    groups.size,
+                    attr,
+                    resourceGroupId,
+                    groups.joinToString("\n") {
+                        "- ${it.displayName} (${it.id})"
+                    },
+                )
+
+                throw IllegalStateException(
+                    "Found ${groups.size} groups with $attr=$resourceGroupId. Cannot determine which group to use.",
+                )
+            }
+        }
     }
 
     private fun buildDisplayName(resourceGroup: ResourceGroup): String {
