@@ -89,7 +89,6 @@ ms-graph:
     unique-name-prefix:
     group-paging-size: 999
   device:
-    device-id-attribute:
     device-paging-size: 999
   membership:
       device:
