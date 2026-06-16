@@ -7,7 +7,6 @@ import java.util.LinkedHashSet
 @Component
 @ConfigurationProperties(prefix = "ms-graph.device")
 class ConfigDevice(
-    var deviceIdAttribute: String? = null,
     var devicePagingSize: Int? = null,
     var staleAfterDays: Int = 7,
     var acceptedDeviationPercent: Int? = null,
