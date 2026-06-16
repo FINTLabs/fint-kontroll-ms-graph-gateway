@@ -8,6 +8,8 @@ spec:
   replicas: 1
   image: ghcr.io/fintlabs/fint-kontroll-ms-graph-gateway:latest
   imagePullPolicy: Always
+  imagePullSecrets:
+    - ghcr
   env:
     - name: "JAVA_TOOL_OPTIONS"
       value: "-XX:+ExitOnOutOfMemoryError -Xmx2048m"
