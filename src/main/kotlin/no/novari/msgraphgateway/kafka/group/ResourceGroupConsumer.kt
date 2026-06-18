@@ -5,7 +5,6 @@ import no.novari.kafka.consuming.ErrorHandlerFactory
 import no.novari.kafka.consuming.ListenerConfiguration
 import no.novari.kafka.consuming.ParameterizedListenerContainerFactoryService
 import no.novari.kafka.topic.name.EntityTopicNameParameters
-import no.novari.kafka.topic.name.EventTopicNameParameters
 import no.novari.kafka.topic.name.TopicNamePrefixParameters
 import org.apache.kafka.clients.consumer.ConsumerRecord
 import org.slf4j.LoggerFactory
@@ -28,10 +27,10 @@ class ResourceGroupConsumer(
             .continueFromPreviousOffsetOnAssignment()
             .build()
 
-    private val topic: EventTopicNameParameters =
-        EventTopicNameParameters
+    private val topic: EntityTopicNameParameters =
+        EntityTopicNameParameters
             .builder()
-            .eventName("resource-group")
+            .resourceName("resource-group")
             .topicNamePrefixParameters(
                 TopicNamePrefixParameters
                     .stepBuilder()
@@ -60,8 +59,4 @@ class ResourceGroupConsumer(
                         .build(),
                 ),
             ).createContainer(topic)
-
-    companion object {
-        private val log = LoggerFactory.getLogger(ResourceGroupConsumer::class.java)
-    }
 }
