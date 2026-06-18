@@ -68,7 +68,7 @@ tasks.named<Test>("test") {
     useJUnitPlatform {
         excludeTags("manual")
     }
-    jvmArgs("-XX:+EnableDynamicAgentLoading")
+    jvmArgs("-XX:+EnableDynamicAgentLoading", "--sun-misc-unsafe-memory-access=allow")
 }
 tasks.register<Test>("integrationTests") {
     description = "Runs tests tagged as manual"

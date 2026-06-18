@@ -1,15 +1,20 @@
 package no.novari.msgraphgateway.user
 
+import ch.qos.logback.classic.Level
+import ch.qos.logback.classic.Logger
+import com.microsoft.graph.models.User
 import com.microsoft.graph.serviceclient.GraphServiceClient
 import com.microsoft.graph.users.UsersRequestBuilder
 import com.microsoft.graph.users.count.CountRequestBuilder
 import com.microsoft.graph.users.delta.DeltaGetResponse
 import com.microsoft.graph.users.delta.DeltaRequestBuilder
 import com.microsoft.kiota.ApiException
+import io.mockk.Runs
 import io.mockk.clearAllMocks
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
+import io.mockk.just
 import io.mockk.mockk
 import io.mockk.spyk
 import io.mockk.verify
@@ -25,6 +30,7 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.slf4j.LoggerFactory
 
 @ExperimentalCoroutinesApi
 class MsGraphUserTest {
@@ -37,6 +43,7 @@ class MsGraphUserTest {
     private lateinit var entraUserSyncService: EntraUserSyncService
     private lateinit var userRepository: UserRepository
     private lateinit var userExternalRepository: UserExternalRepository
+    private lateinit var service: MsGraphUser
 
     @Test
     fun invalidDeltaLinkResetsAndStoresNewDeltaLink() =
@@ -168,6 +175,92 @@ class MsGraphUserTest {
             allowFirstRunToFinish.complete(Unit)
         }
 
+    @Test
+    fun `startFullImport processes all user pages`() =
+
+        runTest {
+            val logger =
+                LoggerFactory.getLogger(MsGraphUser::class.java) as Logger
+
+            val oldLevel = logger.level
+            // Set log to debug for testing that all pages are processed
+            logger.level = Level.DEBUG
+
+            val page1 =
+                DeltaGetResponse().apply {
+                    value = listOf(User(), User(), User())
+                    odataNextLink = "page-2"
+                }
+
+            val page2 =
+                DeltaGetResponse().apply {
+                    value = listOf(User(), User(), User(), User())
+                    odataNextLink = "page-3"
+                }
+
+            val page3 =
+                DeltaGetResponse().apply {
+                    value = listOf(User(), User(), User(), User(), User())
+                    odataDeltaLink = "delta-link"
+                }
+
+            every { configUser.userpagingsize } returns 2
+            every { configUser.userAttributesDelta() } returns arrayOf("id", "displayName")
+
+            every {
+                graphServiceClient.users().delta().get(any())
+            } returns page1
+
+            every {
+                graphServiceClient
+                    .users()
+                    .delta()
+                    .withUrl("page-2")
+                    .get()
+            } returns page2
+
+            every {
+                graphServiceClient
+                    .users()
+                    .delta()
+                    .withUrl("page-3")
+                    .get()
+            } returns page3
+
+            coEvery {
+                entraUserSyncService.processPage(any(), any(), false)
+            } returnsMany
+                listOf(
+                    EntraUserSyncService.UserSyncPageResult(publishedUsers = 2, removedUsers = 3),
+                    EntraUserSyncService.UserSyncPageResult(publishedUsers = 5, removedUsers = 4),
+                    EntraUserSyncService.UserSyncPageResult(publishedUsers = 3, removedUsers = 5),
+                )
+
+            coEvery {
+                deltaLinkStore.createOrUpdate("users", "delta-link")
+            } just Runs
+
+            service.startFullImport(republishAll = false)
+
+            coVerify(exactly = 3) {
+                entraUserSyncService.processPage(any(), any(), false)
+            }
+
+            coVerify(exactly = 1) {
+                entraUserSyncService.processPage(page1.value, any(), false)
+            }
+
+            coVerify(exactly = 1) {
+                entraUserSyncService.processPage(page2.value, any(), false)
+            }
+
+            coVerify(exactly = 1) {
+                entraUserSyncService.processPage(page3.value, any(), false)
+            }
+            // Set log level back to original
+            logger.level = oldLevel
+        }
+
     private fun createMsGraphUser() =
         MsGraphUser(
             configUser = configUser,
@@ -215,14 +308,25 @@ class MsGraphUserTest {
         entraUserSyncService = mockk(relaxed = true)
         userRepository = mockk(relaxed = true)
         userExternalRepository = mockk(relaxed = true)
+        service =
+            MsGraphUser(
+                configUser = configUser,
+                graphServiceClient = graphServiceClient,
+                entraUserSyncService = entraUserSyncService,
+                deltaLinkStore = deltaLinkStore,
+                userRepository = userRepository,
+                userExternalRepository = userExternalRepository,
+            )
 
         every { configUser.userpagingsize } returns 50
+        every { configUser.staleAfterDays } returns 30
         every { configUser.userAttributesDelta() } returns arrayOf("id")
         every { graphServiceClient.users() } returns usersRb
         every { usersRb.delta() } returns deltaRb
         every { usersRb.count() } returns countRb
 
-        coEvery { entraUserSyncService.processPage(any(), any(), any()) } returns 0
+        coEvery { entraUserSyncService.processPage(any(), any(), any()) } returns
+            EntraUserSyncService.UserSyncPageResult(0, 0)
         coEvery { entraUserSyncService.finishFullImport(any()) } returns 0
         coEvery { entraUserSyncService.finishFullImportExternal(any()) } returns 0
 
