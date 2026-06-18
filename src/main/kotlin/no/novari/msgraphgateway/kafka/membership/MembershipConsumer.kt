@@ -29,7 +29,7 @@ class MembershipConsumer(
             .continueFromPreviousOffsetOnAssignment()
             .build()
 
-    val topic: EventTopicNameParameters =
+    private val topic: EventTopicNameParameters =
         EventTopicNameParameters
             .builder()
             .eventName("resource-group-membership-device")
@@ -55,8 +55,5 @@ class MembershipConsumer(
                         .skipFailedRecords()
                         .build(),
                 ),
-                { container ->
-                    container.setConcurrency(properties.consumerConcurrency)
-                },
             ).createContainer(topic)
 }

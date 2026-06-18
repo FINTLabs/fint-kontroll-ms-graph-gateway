@@ -223,7 +223,6 @@ class MembershipServiceTest {
                 deviceMembershipEntityRepository = deviceMembershipEntityRepository,
                 properties =
                     DeviceMembershipProcessingProperties(
-                        consumerConcurrency = 1,
                         consumerMaxPollRecords = 100,
                         graphMaxConcurrentCalls = 3,
                         graphBatchSize = 20,

@@ -92,7 +92,6 @@ ms-graph:
     device-paging-size: 999
   membership:
       device:
-          consumer-concurrency: 12
           consumer-max-poll-records: 500
           graph-max-concurrent-calls: 3
           graph-batch-size: 20
