@@ -33,14 +33,25 @@ class EntraDeviceSyncService(
         devices: List<Device>?,
         notSeenIncremented: MutableSet<UUID>,
         republishAll: Boolean,
-    ): Int {
-        if (devices.isNullOrEmpty()) return 0
+    ): DeltaSyncPageResult {
+        if (devices.isNullOrEmpty()) {
+            return DeltaSyncPageResult(0, 0)
+        }
 
         var publishedTotal = 0
+        var removedTotal = 0
+
         for (batch in devices.chunked(batchSize)) {
-            publishedTotal += processBatch(batch, notSeenIncremented, republishAll)
+            val result = processBatch(batch, notSeenIncremented, republishAll)
+
+            publishedTotal += result.publishedDevices
+            removedTotal += result.removedDevices
         }
-        return publishedTotal
+
+        return DeltaSyncPageResult(
+            publishedDevices = publishedTotal,
+            removedDevices = removedTotal,
+        )
     }
 
     suspend fun finishFullImport(cutoff: Instant): Int =
@@ -94,7 +105,7 @@ class EntraDeviceSyncService(
         batch: List<Device>,
         notSeenIncremented: MutableSet<UUID>,
         republishAll: Boolean,
-    ): Int =
+    ): DeltaSyncPageResult =
         coroutineScope {
             val now = Instant.now()
 
@@ -116,29 +127,40 @@ class EntraDeviceSyncService(
                     }.distinctBy { it.first }
                     .toList()
 
-            if (candidates.isEmpty()) return@coroutineScope 0
-
-            if (republishAll) {
-                upsertAndPublishAll(
-                    now = now,
-                    repo = deviceRepository,
-                    candidates = candidates,
-                    toDto = { device -> EntraDevice(device, configDevice) },
-                    publish = { dto -> producer.publish(dto) },
-                    checksum = { dto -> checksumService.checksum(dto) },
-                    logLabel = "devices",
-                )
-            } else {
-                upsertAndPublishChanged(
-                    now = now,
-                    repo = deviceRepository,
-                    candidates = candidates,
-                    toDto = { device -> EntraDevice(device, configDevice) },
-                    publish = { dto -> producer.publish(dto) },
-                    checksum = { dto -> checksumService.checksum(dto) },
-                    logLabel = "devices",
+            if (candidates.isEmpty()) {
+                return@coroutineScope DeltaSyncPageResult(
+                    publishedDevices = 0,
+                    removedDevices = removedDevices.size,
                 )
             }
+
+            val published =
+                if (republishAll) {
+                    upsertAndPublishAll(
+                        now = now,
+                        repo = deviceRepository,
+                        candidates = candidates,
+                        toDto = { device -> EntraDevice(device, configDevice) },
+                        publish = { dto -> producer.publish(dto) },
+                        checksum = { dto -> checksumService.checksum(dto) },
+                        logLabel = "devices",
+                    )
+                } else {
+                    upsertAndPublishChanged(
+                        now = now,
+                        repo = deviceRepository,
+                        candidates = candidates,
+                        toDto = { device -> EntraDevice(device, configDevice) },
+                        publish = { dto -> producer.publish(dto) },
+                        checksum = { dto -> checksumService.checksum(dto) },
+                        logLabel = "devices",
+                    )
+                }
+
+            DeltaSyncPageResult(
+                publishedDevices = published,
+                removedDevices = removedDevices.size,
+            )
         }
 
     private suspend fun <DTO : Any> upsertAndPublishChanged(
@@ -295,6 +317,11 @@ class EntraDeviceSyncService(
     private data class PreparedBatch<DTO : Any>(
         val rows: List<DeviceStateRepository.UpsertRow>,
         val dtoById: Map<UUID, DTO>,
+    )
+
+    data class DeltaSyncPageResult(
+        val publishedDevices: Int,
+        val removedDevices: Int,
     )
 
     private fun parseObjectIdOrNull(deviceId: String?): UUID? =

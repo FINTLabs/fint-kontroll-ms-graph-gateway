@@ -223,9 +223,10 @@ class MsGraphDevice(
             }
 
         log.info(
-            "Full import completed (fetchedTotal={}, publishedChanged={}, publishedDeleted={})",
+            "Full import completed (fetchedTotal={}, publishedChanged={}, totalRemoved={}, publishedDeleted={})",
             result.totalDevicesSeen,
             result.publishedDevices,
+            result.removedDevices,
             deletedDevices,
         )
     }
@@ -295,6 +296,7 @@ class MsGraphDevice(
 
         var totalDevicesFetched = 0
         var totalPublished = 0
+        var totalRemoved = 0
         var pageNo = 0
 
         val seenNextLinks = HashSet<String>()
@@ -318,7 +320,15 @@ class MsGraphDevice(
                         entraDeviceSyncService.processPage(value, notSeenIncremented, republishAll)
                     }
 
-                totalPublished += publishedThisPage
+                log.debug(
+                    "Devices page {} published={} removed={}",
+                    pageNo,
+                    publishedThisPage.publishedDevices,
+                    publishedThisPage.removedDevices,
+                )
+
+                totalPublished += publishedThisPage.publishedDevices
+                totalRemoved += publishedThisPage.removedDevices
             } else {
                 log.debug("Devices page {} fetched=0", pageNo)
                 log.trace(current.toString())
@@ -369,7 +379,7 @@ class MsGraphDevice(
             }
         }
 
-        return PageResult(totalDevicesFetched, totalPublished)
+        return PageResult(totalDevicesFetched, totalPublished, totalRemoved)
     }
 
     private suspend fun <T> callGraph(block: () -> T): T =
@@ -395,6 +405,7 @@ class MsGraphDevice(
     private data class PageResult(
         val totalDevicesSeen: Int,
         val publishedDevices: Int,
+        val removedDevices: Int,
     )
 
     companion object {
