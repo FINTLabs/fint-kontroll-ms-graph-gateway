@@ -225,9 +225,10 @@ class MsGraphUser(
         val deletedExternal = withContext(Dispatchers.IO) { entraUserSyncService.finishFullImportExternal(cutoff) }
 
         log.info(
-            "Full import completed (fetchedTotal={}, publishedChanged={}, publishedDeleted={}, publishedDeletedExternal={})",
+            "Full import completed (fetchedTotal={}, publishedChanged={}, totalRemoved={}, publishedDeleted={}, publishedDeletedExternal={})",
             result.totalUsersSeen,
             result.publishedUsers,
+            result.removedUsers,
             deletedUsers,
             deletedExternal,
         )
@@ -293,6 +294,7 @@ class MsGraphUser(
 
         var totalUsersFetched = 0
         var totalPublished = 0
+        var totalRemoved = 0
         var pageNo = 0
 
         val seenNextLinks = HashSet<String>()
@@ -315,7 +317,9 @@ class MsGraphUser(
                     withContext(Dispatchers.IO) {
                         entraUserSyncService.processPage(value, notSeenIncremented, republishAll)
                     }
-                totalPublished += publishedThisPage
+
+                totalPublished += publishedThisPage.publishedUsers
+                totalRemoved += publishedThisPage.removedUsers
             } else {
                 log.debug("Users page {} fetched=0", pageNo)
                 log.trace(current.toString())
@@ -356,17 +360,18 @@ class MsGraphUser(
 
             if (!isFullImport) {
                 log.info(
-                    "Delta users pull complete (initialRun={}, fetchedTotal={}, publishedChanged={})",
+                    "Delta users pull complete (initialRun={}, fetchedTotal={}, publishedChanged={}, totalRemoved={})",
                     initialRun,
                     totalUsersFetched,
                     totalPublished,
+                    totalRemoved,
                 )
             } else {
                 log.info("Stored new deltaLink after full import")
             }
         }
 
-        return PageResult(totalUsersFetched, totalPublished)
+        return PageResult(totalUsersFetched, totalPublished, totalRemoved)
     }
 
     private suspend fun <T> callGraph(block: () -> T): T =
@@ -392,6 +397,7 @@ class MsGraphUser(
     private data class PageResult(
         val totalUsersSeen: Int,
         val publishedUsers: Int,
+        val removedUsers: Int,
     )
 
     companion object {

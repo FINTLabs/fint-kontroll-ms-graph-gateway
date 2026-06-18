@@ -37,13 +37,16 @@ class EntraUserSyncService(
         users: List<User>?,
         notSeenIncremented: MutableSet<UUID>,
         republishAll: Boolean,
-    ): Int {
-        if (users.isNullOrEmpty()) return 0
+    ): UserSyncPageResult {
+        if (users.isNullOrEmpty()) return UserSyncPageResult(0, 0)
         var publishedTotal = 0
+        var removedTotal = 0
         for (batch in users.chunked(batchSize)) {
-            publishedTotal += processBatch(batch, notSeenIncremented, republishAll)
+            val result = processBatch(batch, notSeenIncremented, republishAll)
+            publishedTotal += result.publishedUsers
+            removedTotal += result.removedUsers
         }
-        return publishedTotal
+        return UserSyncPageResult(publishedTotal, removedTotal)
     }
 
     suspend fun finishFullImport(cutoff: Instant): Int =
@@ -101,13 +104,14 @@ class EntraUserSyncService(
         batch: List<User>,
         notSeenIncremented: MutableSet<UUID>,
         republishAll: Boolean,
-    ): Int =
+    ): UserSyncPageResult =
         coroutineScope {
             val now = Instant.now()
 
             val removedUsers = batch.filter { it.additionalData.containsKey("@removed") }
+            val removedCount = removedUsers.size
             if (removedUsers.isNotEmpty()) {
-                log.info("There are {} removed users", removedUsers.size)
+                log.info("There are {} removed users", removedCount)
                 removedUsers.forEach { u ->
                     handleRemoved(u.id, notSeenIncremented)
                 }
@@ -124,7 +128,12 @@ class EntraUserSyncService(
                     }.distinctBy { it.first }
                     .toList()
 
-            if (candidates.isEmpty()) return@coroutineScope 0
+            if (candidates.isEmpty()) {
+                return@coroutineScope UserSyncPageResult(
+                    publishedUsers = 0,
+                    removedUsers = removedCount,
+                )
+            }
 
             val externals = ArrayList<Pair<UUID, User>>()
             val normals = ArrayList<Pair<UUID, User>>()
@@ -132,54 +141,68 @@ class EntraUserSyncService(
             for ((id, u) in candidates) {
                 if (isExternal(u)) externals += id to u else normals += id to u
             }
-            if (republishAll) {
-                val publishedUsers =
-                    upsertAndPublishAll(
-                        now = now,
-                        repo = userRepository,
-                        candidates = normals,
-                        toDto = { u -> EntraUser(u, configUser) },
-                        publish = { dto -> producer.publish(dto) },
-                        checksum = { dto -> checksumService.checksum(dto) },
-                        logLabel = "users",
-                    )
 
-                val publishedExternal =
-                    upsertAndPublishAll(
-                        now = now,
-                        repo = userExternalRepository,
-                        candidates = externals,
-                        toDto = { u -> EntraUserExternal(u, configUser) },
-                        publish = { dto -> externalProducer.publish(dto) },
-                        checksum = { dto -> checksumService.checksum(dto) },
-                        logLabel = "external users",
-                    )
-                publishedUsers + publishedExternal
-            } else {
-                val publishedUsers =
-                    upsertAndPublishChanged(
-                        now = now,
-                        repo = userRepository,
-                        candidates = normals,
-                        toDto = { u -> EntraUser(u, configUser) },
-                        publish = { dto -> producer.publish(dto) },
-                        checksum = { dto -> checksumService.checksum(dto) },
-                        logLabel = "users",
-                    )
+            val published =
+                if (republishAll) {
+                    val publishedUsers =
+                        upsertAndPublishAll(
+                            now = now,
+                            repo = userRepository,
+                            candidates = normals,
+                            toDto = { u -> EntraUser(u, configUser) },
+                            publish = { dto -> producer.publish(dto) },
+                            checksum = { dto -> checksumService.checksum(dto) },
+                            logLabel = "users",
+                        )
 
-                val publishedExternal =
-                    upsertAndPublishChanged(
-                        now = now,
-                        repo = userExternalRepository,
-                        candidates = externals,
-                        toDto = { u -> EntraUserExternal(u, configUser) },
-                        publish = { dto -> externalProducer.publish(dto) },
-                        checksum = { dto -> checksumService.checksum(dto) },
-                        logLabel = "external users",
-                    )
-                publishedUsers + publishedExternal
-            }
+                    val publishedExternal =
+                        upsertAndPublishAll(
+                            now = now,
+                            repo = userExternalRepository,
+                            candidates = externals,
+                            toDto = { u -> EntraUserExternal(u, configUser) },
+                            publish = { dto -> externalProducer.publish(dto) },
+                            checksum = { dto -> checksumService.checksum(dto) },
+                            logLabel = "external users",
+                        )
+
+                    publishedUsers + publishedExternal
+                } else {
+                    val publishedUsers =
+                        upsertAndPublishChanged(
+                            now = now,
+                            repo = userRepository,
+                            candidates = normals,
+                            toDto = { u -> EntraUser(u, configUser) },
+                            publish = { dto -> producer.publish(dto) },
+                            checksum = { dto -> checksumService.checksum(dto) },
+                            logLabel = "users",
+                        )
+
+                    val publishedExternal =
+                        upsertAndPublishChanged(
+                            now = now,
+                            repo = userExternalRepository,
+                            candidates = externals,
+                            toDto = { u -> EntraUserExternal(u, configUser) },
+                            publish = { dto -> externalProducer.publish(dto) },
+                            checksum = { dto -> checksumService.checksum(dto) },
+                            logLabel = "external users",
+                        )
+
+                    publishedUsers + publishedExternal
+                }
+
+            UserSyncPageResult(
+                publishedUsers = published,
+                removedUsers = removedCount,
+            )
         }
+
+    data class UserSyncPageResult(
+        val publishedUsers: Int,
+        val removedUsers: Int,
+    )
 
     private suspend fun <DTO : Any> upsertAndPublishChanged(
         now: Instant,
