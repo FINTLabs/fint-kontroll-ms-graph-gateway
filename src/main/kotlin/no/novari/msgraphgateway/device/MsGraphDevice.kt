@@ -61,7 +61,7 @@ class MsGraphDevice(
             log.info("Full import pending; skipping device delta run")
             return
         }
-        val trackingId = UUID.randomUUID().toString()
+        val correlationId = UUID.randomUUID().toString()
         scope.launch {
             if (!runMutex.tryLock()) {
                 log.info("Device sync already running; skipping delta run")
@@ -91,7 +91,7 @@ class MsGraphDevice(
                             .devices()
                             .delta()
                             .get { req ->
-                                req.headers.add("client-request-id", trackingId)
+                                req.headers.add("client-request-id", correlationId)
                                 req.headers.add("ConsistencyLevel", "eventual")
                                 req.queryParameters?.apply {
                                     select = selection
@@ -193,14 +193,14 @@ class MsGraphDevice(
             "Starting full import of devices from Microsoft Graph (pageSize={})",
             configDevice.devicePagingSize,
         )
-        val trackingId = UUID.randomUUID().toString()
+        val correlationId = UUID.randomUUID().toString()
         val firstPage =
             callGraph {
                 graphServiceClient
                     .devices()
                     .delta()
                     .get { req ->
-                        req.headers.add("client-request-id", trackingId)
+                        req.headers.add("client-request-id", correlationId)
                         req.headers.add("ConsistencyLevel", "eventual")
                         req.queryParameters?.select = selection
                     }
@@ -246,10 +246,10 @@ class MsGraphDevice(
     }
 
     private fun shouldContinueWithImport(): Boolean {
-        val trackingId = UUID.randomUUID().toString()
+        val correlationId = UUID.randomUUID().toString()
         val totalCountSource =
             graphServiceClient.devices().count().get { req ->
-                req.headers.add("client-request-id", trackingId)
+                req.headers.add("client-request-id", correlationId)
                 req.headers.add("ConsistencyLevel", "eventual")
             } ?: 0
         val totalCountDb = coreDeviceRepository.getCount()
@@ -320,7 +320,12 @@ class MsGraphDevice(
                 totalPublished += publishedThisPage
             } else {
                 log.debug("Devices page {} fetched=0", pageNo)
-                log.trace(current.toString())
+                log.trace(
+                    "Devices page {} metadata (nextLinkPresent={}, deltaLinkPresent={})",
+                    pageNo,
+                    !current.odataNextLink.isNullOrBlank(),
+                    !current.odataDeltaLink.isNullOrBlank(),
+                )
             }
 
             last = current

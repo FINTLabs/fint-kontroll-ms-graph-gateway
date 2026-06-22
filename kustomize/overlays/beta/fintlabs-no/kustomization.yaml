@@ -38,6 +38,11 @@ patches:
           requests:
            cpu: "500m"
            memory: "500m"
+      - op: add
+        path: "/spec/env/-"
+        value:
+            name: "logging.level.no.novari"
+            value: "TRACE"
     target:
       kind: Application
       name: fint-kontroll-ms-graph-gateway
