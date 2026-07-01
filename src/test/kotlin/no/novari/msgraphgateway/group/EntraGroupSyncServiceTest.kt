@@ -8,7 +8,7 @@ import no.novari.msgraphgateway.kafka.group.GroupProducerService
 import no.novari.msgraphgateway.repository.group.GroupRepository
 import no.novari.msgraphgateway.services.Checksum
 import no.novari.msgraphgateway.services.ChecksumService
-import no.novari.msgraphgateway.services.EntraGroupSyncService
+import no.novari.msgraphgateway.services.group.EntraGroupSyncService
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import java.time.Instant
@@ -166,7 +166,40 @@ class EntraGroupSyncServiceTest {
         }
 
     @Test
-    fun `processPage only publishes groups matching suffix and resource group attribute`() =
+    fun `processPage skips group with invalid object id`() =
+        runTest {
+            val invalidGroup =
+                group(
+                    id = "not-a-uuid",
+                    displayName = "Test_SUFFIX",
+                    additionalData = mapOf("extension_resourceGroupId" to "123456"),
+                )
+
+            every { configGroup.prefix } returns null
+            every { configGroup.suffix } returns "_SUFFIX"
+            every { configGroup.filterMode } returns ConfigGroup.FilterMode.SUFFIX
+            every { configGroup.resourceGroupIdAttribute } returns "extension_resourceGroupId"
+
+            val result =
+                service.processPage(
+                    groups = listOf(invalidGroup),
+                    notSeenIncremented = mutableSetOf(),
+                    republishAll = false,
+                )
+
+            assertEquals(0, result)
+
+            coVerify(exactly = 0) {
+                groupRepository.batchUpsertReturningChanged(any())
+            }
+
+            coVerify(exactly = 0) {
+                producer.publish(any())
+            }
+        }
+
+    @Test
+    fun `processPage skips group with invalid resource group id`() =
         runTest {
             val validId = UUID.randomUUID()
 
@@ -210,6 +243,325 @@ class EntraGroupSyncServiceTest {
             val result =
                 service.processPage(
                     groups = listOf(validGroup, wrongSuffix, missingAttribute),
+                    notSeenIncremented = mutableSetOf(),
+                    republishAll = false,
+                )
+
+            assertEquals(1, result)
+
+            coVerify(exactly = 1) {
+                groupRepository.batchUpsertReturningChanged(
+                    match { rows -> rows.size == 1 && rows.first().objectId == validId },
+                )
+            }
+
+            coVerify(exactly = 1) {
+                producer.publish(any())
+            }
+        }
+
+    @Test
+    fun `processPage returns zero when groups is null`() =
+        runTest {
+            val result =
+                service.processPage(
+                    groups = null,
+                    notSeenIncremented = mutableSetOf(),
+                    republishAll = false,
+                )
+
+            assertEquals(0, result)
+
+            coVerify(exactly = 0) {
+                groupRepository.batchUpsertReturningChanged(any())
+            }
+
+            coVerify(exactly = 0) {
+                groupRepository.batchUpsert(any())
+            }
+
+            coVerify(exactly = 0) {
+                producer.publish(any())
+            }
+        }
+
+    @Test
+    fun `processPage returns zero when groups is empty`() =
+        runTest {
+            val result =
+                service.processPage(
+                    groups = emptyList(),
+                    notSeenIncremented = mutableSetOf(),
+                    republishAll = false,
+                )
+
+            assertEquals(0, result)
+
+            coVerify(exactly = 0) {
+                groupRepository.batchUpsertReturningChanged(any())
+            }
+
+            coVerify(exactly = 0) {
+                groupRepository.batchUpsert(any())
+            }
+
+            coVerify(exactly = 0) {
+                producer.publish(any())
+            }
+        }
+
+    @Test
+    fun `processPage upserts and publishes all matching groups when republishAll is true`() =
+        runTest {
+            val validId = UUID.randomUUID()
+            val validGroup =
+                group(
+                    id = validId.toString(),
+                    displayName = "Test_SUFFIX",
+                    additionalData = mapOf("extension_resourceGroupId" to "123456"),
+                )
+
+            every { configGroup.prefix } returns null
+            every { configGroup.suffix } returns "_SUFFIX"
+            every { configGroup.filterMode } returns ConfigGroup.FilterMode.SUFFIX
+            every { configGroup.resourceGroupIdAttribute } returns "extension_resourceGroupId"
+
+            every {
+                checksumService.checksum(any())
+            } returns Checksum("checksum".toByteArray())
+
+            coEvery {
+                groupRepository.batchUpsert(any())
+            } just Runs
+
+            coEvery { producer.publish(any()) } just Runs
+
+            val result =
+                service.processPage(
+                    groups = listOf(validGroup),
+                    notSeenIncremented = mutableSetOf(),
+                    republishAll = true,
+                )
+
+            assertEquals(1, result)
+
+            coVerify(exactly = 1) {
+                groupRepository.batchUpsert(
+                    match { rows -> rows.size == 1 && rows.first().objectId == validId },
+                )
+            }
+
+            coVerify(exactly = 0) {
+                groupRepository.batchUpsertReturningChanged(any())
+            }
+
+            coVerify(exactly = 1) {
+                producer.publish(any())
+            }
+        }
+
+    @Test
+    fun `processPage does not publish when matching group is unchanged`() =
+        runTest {
+            val validId = UUID.randomUUID()
+            val validGroup =
+                group(
+                    id = validId.toString(),
+                    displayName = "Test_SUFFIX",
+                    additionalData = mapOf("extension_resourceGroupId" to "123456"),
+                )
+
+            every { configGroup.prefix } returns null
+            every { configGroup.suffix } returns "_SUFFIX"
+            every { configGroup.filterMode } returns ConfigGroup.FilterMode.SUFFIX
+            every { configGroup.resourceGroupIdAttribute } returns "extension_resourceGroupId"
+
+            every {
+                checksumService.checksum(any())
+            } returns Checksum("checksum".toByteArray())
+
+            coEvery {
+                groupRepository.batchUpsertReturningChanged(any())
+            } returns emptySet()
+
+            val result =
+                service.processPage(
+                    groups = listOf(validGroup),
+                    notSeenIncremented = mutableSetOf(),
+                    republishAll = false,
+                )
+
+            assertEquals(0, result)
+
+            coVerify(exactly = 1) {
+                groupRepository.batchUpsertReturningChanged(
+                    match { rows -> rows.size == 1 && rows.first().objectId == validId },
+                )
+            }
+
+            coVerify(exactly = 0) {
+                producer.publish(any())
+            }
+        }
+
+    @Test
+    fun `processPage increments notSeenCount for removed group when it exists in repository`() =
+        runTest {
+            val removedId = UUID.randomUUID()
+            val removedGroup =
+                group(
+                    id = removedId.toString(),
+                    displayName = "Test_SUFFIX",
+                    additionalData = mapOf("@removed" to mapOf<String, Any>()),
+                )
+
+            coEvery { groupRepository.existsById(removedId) } returns true
+            coEvery { groupRepository.incrementNotSeenCount(listOf(removedId)) } just Runs
+
+            val notSeenIncremented = mutableSetOf<UUID>()
+
+            val result =
+                service.processPage(
+                    groups = listOf(removedGroup),
+                    notSeenIncremented = notSeenIncremented,
+                    republishAll = false,
+                )
+
+            assertEquals(0, result)
+            assertTrue(notSeenIncremented.contains(removedId))
+
+            coVerify(exactly = 1) {
+                groupRepository.existsById(removedId)
+            }
+
+            coVerify(exactly = 1) {
+                groupRepository.incrementNotSeenCount(listOf(removedId))
+            }
+
+            coVerify(exactly = 0) {
+                producer.publish(any())
+            }
+        }
+
+    @Test
+    fun `processPage does not increment notSeenCount for removed group when it does not exist in repository`() =
+        runTest {
+            val removedId = UUID.randomUUID()
+            val removedGroup =
+                group(
+                    id = removedId.toString(),
+                    displayName = "Test_SUFFIX",
+                    additionalData = mapOf("@removed" to mapOf<String, Any>()),
+                )
+
+            coEvery { groupRepository.existsById(removedId) } returns false
+
+            val notSeenIncremented = mutableSetOf<UUID>()
+
+            val result =
+                service.processPage(
+                    groups = listOf(removedGroup),
+                    notSeenIncremented = notSeenIncremented,
+                    republishAll = false,
+                )
+
+            assertEquals(0, result)
+            assertTrue(notSeenIncremented.contains(removedId))
+
+            coVerify(exactly = 1) {
+                groupRepository.existsById(removedId)
+            }
+
+            coVerify(exactly = 0) {
+                groupRepository.incrementNotSeenCount(any())
+            }
+
+            coVerify(exactly = 0) {
+                producer.publish(any())
+            }
+        }
+
+    @Test
+    fun `processPage increments notSeenCount only once for same removed group in same run`() =
+        runTest {
+            val removedId = UUID.randomUUID()
+            val removedGroup =
+                group(
+                    id = removedId.toString(),
+                    displayName = "Test_SUFFIX",
+                    additionalData = mapOf("@removed" to mapOf<String, Any>()),
+                )
+
+            coEvery { groupRepository.existsById(removedId) } returns true
+            coEvery { groupRepository.incrementNotSeenCount(listOf(removedId)) } just Runs
+
+            val notSeenIncremented = mutableSetOf<UUID>()
+
+            service.processPage(
+                groups = listOf(removedGroup),
+                notSeenIncremented = notSeenIncremented,
+                republishAll = false,
+            )
+
+            service.processPage(
+                groups = listOf(removedGroup),
+                notSeenIncremented = notSeenIncremented,
+                republishAll = false,
+            )
+
+            coVerify(exactly = 1) {
+                groupRepository.existsById(removedId)
+            }
+
+            coVerify(exactly = 1) {
+                groupRepository.incrementNotSeenCount(listOf(removedId))
+            }
+        }
+
+    @Test
+    fun `processPage only publishes groups matching both prefix and suffix when filter mode is BOTH`() =
+        runTest {
+            val validId = UUID.randomUUID()
+
+            val validGroup =
+                group(
+                    id = validId.toString(),
+                    displayName = "PREFIX_Test_SUFFIX",
+                    additionalData = mapOf("extension_resourceGroupId" to "123456"),
+                )
+
+            val missingPrefix =
+                group(
+                    id = UUID.randomUUID().toString(),
+                    displayName = "Test_SUFFIX",
+                    additionalData = mapOf("extension_resourceGroupId" to "123456"),
+                )
+
+            val missingSuffix =
+                group(
+                    id = UUID.randomUUID().toString(),
+                    displayName = "PREFIX_Test",
+                    additionalData = mapOf("extension_resourceGroupId" to "123456"),
+                )
+
+            every { configGroup.prefix } returns "PREFIX_"
+            every { configGroup.suffix } returns "_SUFFIX"
+            every { configGroup.filterMode } returns ConfigGroup.FilterMode.BOTH
+            every { configGroup.resourceGroupIdAttribute } returns "extension_resourceGroupId"
+
+            every {
+                checksumService.checksum(any())
+            } returns Checksum("checksum".toByteArray())
+
+            coEvery {
+                groupRepository.batchUpsertReturningChanged(any())
+            } returns setOf(validId)
+
+            coEvery { producer.publish(any()) } just Runs
+
+            val result =
+                service.processPage(
+                    groups = listOf(validGroup, missingPrefix, missingSuffix),
                     notSeenIncremented = mutableSetOf(),
                     republishAll = false,
                 )

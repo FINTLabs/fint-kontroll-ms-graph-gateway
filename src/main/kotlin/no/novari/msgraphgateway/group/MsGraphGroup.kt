@@ -2,17 +2,24 @@ package no.novari.msgraphgateway.group
 
 import com.microsoft.graph.groups.delta.DeltaGetResponse
 import com.microsoft.graph.serviceclient.GraphServiceClient
+import com.microsoft.graph.users.item.getmembergroups.GetMemberGroupsPostRequestBody
 import com.microsoft.kiota.ApiException
 import jakarta.annotation.PostConstruct
 import jakarta.annotation.PreDestroy
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import no.novari.msgraphgateway.config.ConfigGroup
+import no.novari.msgraphgateway.config.ConfigUser
+import no.novari.msgraphgateway.dto.UserWithGroupsDto
 import no.novari.msgraphgateway.entra.DeltaLinkStore
-import no.novari.msgraphgateway.services.EntraGroupSyncService
+import no.novari.msgraphgateway.entra.group.EntraGroup
+import no.novari.msgraphgateway.entra.user.EntraUser
+import no.novari.msgraphgateway.services.group.EntraGroupSyncService
 import org.slf4j.LoggerFactory
+import org.springframework.http.HttpStatus
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
+import org.springframework.web.server.ResponseStatusException
 import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.CompletionException
@@ -24,6 +31,7 @@ class MsGraphGroup(
     private val graphServiceClient: GraphServiceClient,
     private val groupSyncService: EntraGroupSyncService,
     private val deltaLinkStore: DeltaLinkStore,
+    private val configUser: ConfigUser,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val runMutex = Mutex()
@@ -325,6 +333,117 @@ class MsGraphGroup(
         }
 
         return PageResult(totalGroupsFetched, totalPublished)
+    }
+
+    fun getEntraUserWithGroups(userId: String): UserWithGroupsDto =
+        try {
+            val selection = configUser.userAttributesDelta()
+            val user =
+                graphServiceClient.users().byUserId(userId).get { req ->
+                    req.queryParameters?.select = selection
+                }
+                    ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "User not found: $userId")
+
+            val entraUser = EntraUser(user, configUser)
+
+            val requestBody =
+                GetMemberGroupsPostRequestBody().apply {
+                    securityEnabledOnly = true
+                }
+
+            val groupIds: List<String> =
+                graphServiceClient
+                    .users()
+                    .byUserId(userId)
+                    .memberGroups
+                    .post(requestBody)
+                    ?.value
+                    ?: emptyList()
+
+            val selectionCriteriaGroup =
+                arrayOf(
+                    "id",
+                    "displayName",
+                    configGroup.resourceGroupIdAttribute ?: "",
+                ).filter { it.isNotBlank() }.toTypedArray()
+
+            val entraGroups = mutableListOf<EntraGroup>()
+
+            for (groupId in groupIds) {
+                val group =
+                    graphServiceClient
+                        .groups()
+                        .byGroupId(groupId)
+                        .get { requestConfig ->
+                            requestConfig.queryParameters?.select = selectionCriteriaGroup
+                        } ?: continue
+
+                val displayName = group.displayName
+                val additionalData = group.additionalData
+                val hasSuffix = configGroup.suffix?.let { s -> displayName?.endsWith(s) == true } ?: false
+                val hasResourceAttr =
+                    configGroup.resourceGroupIdAttribute
+                        ?.let { key -> additionalData.containsKey(key) }
+                        ?: false
+
+                if (hasSuffix && hasResourceAttr) {
+                    entraGroups += EntraGroup(group, configGroup)
+                }
+            }
+
+            log.info(
+                "*** <<< Rest service found userId {}. User is member of {} FINT kontroll groups >>> ***",
+                userId,
+                entraGroups.size,
+            )
+
+            UserWithGroupsDto(entraUser, entraGroups)
+        } catch (ex: Exception) {
+            log.error("Failed to fetch user or groups: {}", ex.message)
+            UserWithGroupsDto()
+        }
+
+    fun getGroupInfo(groupId: String): EntraGroup? =
+        try {
+            val group =
+                graphServiceClient
+                    .groups()
+                    .byGroupId(groupId)
+                    .get()
+                    ?: return null
+
+            EntraGroup(group, configGroup)
+        } catch (ex: ApiException) {
+            if (ex.responseStatusCode == 404) {
+                log.info("Group with objectId {} not found in Entra", groupId)
+                null
+            } else {
+                throw ex
+            }
+        }
+
+    fun getGroupInfoByResourceGroupId(resourceGroupId: Long): EntraGroup? {
+        val attr = configGroup.resourceGroupIdAttribute ?: return null
+
+        val groups =
+            graphServiceClient
+                .groups()
+                .get { req ->
+                    req.queryParameters?.select =
+                        arrayOf(
+                            "id",
+                            "displayName",
+                            attr,
+                        )
+                }?.value
+                ?: return null
+
+        val group =
+            groups.firstOrNull {
+                it.additionalData[attr]?.toString()?.toLongOrNull() == resourceGroupId
+            } ?: return null
+
+        return EntraGroup(group, configGroup)
     }
 
     private fun ApiException.isInvalidDeltaState(): Boolean =

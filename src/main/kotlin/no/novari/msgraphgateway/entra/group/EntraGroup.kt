@@ -2,6 +2,7 @@ package no.novari.msgraphgateway.entra.group
 
 import com.microsoft.graph.models.Group
 import no.novari.msgraphgateway.config.ConfigGroup
+import no.novari.msgraphgateway.entra.EntraStatus
 import org.slf4j.LoggerFactory
 import java.io.Serializable
 
@@ -9,11 +10,18 @@ data class EntraGroup(
     val objectId: String? = null,
     val displayName: String? = null,
     val resourceGroupID: Long? = null,
+    val traceId: String? = null,
+    val status: EntraStatus? = null,
 ) : Serializable {
-    constructor(group: Group, configGroup: ConfigGroup) : this(
+    constructor(
+        group: Group,
+        configGroup: ConfigGroup,
+        traceId: String? = null,
+    ) : this(
         objectId = group.id,
         displayName = group.displayName,
         resourceGroupID = getResourceGroupId(group, configGroup),
+        traceId = traceId,
     )
 
     companion object {
@@ -33,10 +41,12 @@ data class EntraGroup(
         }
     }
 
-    fun toPayload(): EntraGroupPayload =
+    fun toPayload(status: EntraStatus? = this.status): EntraGroupPayload =
         EntraGroupPayload(
             objectId = objectId,
             displayName = displayName,
             resourceGroupId = resourceGroupID,
+            traceId = traceId,
+            status = status,
         )
 }

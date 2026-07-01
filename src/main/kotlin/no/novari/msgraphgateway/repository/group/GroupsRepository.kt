@@ -1,5 +1,6 @@
 package no.novari.msgraphgateway.repository.group
 
+import no.novari.msgraphgateway.services.Checksum
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
 import org.springframework.stereotype.Repository
@@ -63,38 +64,44 @@ open class GroupsRepository(
           SELECT *
           FROM unnest(
             :objectIds::uuid[],
+            :resourceGroupIds::bigint[],
             :checksums::bytea[],
             :lastSeenAts::timestamptz[]
-          ) AS t(object_id, checksum, last_seen_at)
+          ) AS t(object_id, resource_group_id, checksum, last_seen_at)
         ),
         input_with_old AS (
           SELECT
             i.object_id,
+            i.resource_group_id,
             i.checksum,
             i.last_seen_at,
+            g.object_id AS old_object_id,
             g.checksum AS old_checksum
           FROM input i
-          LEFT JOIN $table g ON g.object_id = i.object_id
+          LEFT JOIN $table g ON g.resource_group_id = i.resource_group_id
         ),
         upsert AS (
-          INSERT INTO $table (object_id, checksum, last_seen_at, not_seen_count)
-          SELECT object_id, checksum, last_seen_at, 0
+          INSERT INTO $table (object_id, resource_group_id, checksum, last_seen_at, not_seen_count)
+          SELECT object_id, resource_group_id, checksum, last_seen_at, 0
           FROM input_with_old
-          ON CONFLICT (object_id) DO UPDATE
+          ON CONFLICT (resource_group_id) DO UPDATE
           SET
+            object_id      = EXCLUDED.object_id,
             last_seen_at   = EXCLUDED.last_seen_at,
             checksum       = CASE
                               WHEN $table.checksum IS DISTINCT FROM EXCLUDED.checksum
+                                OR $table.object_id IS DISTINCT FROM EXCLUDED.object_id
                               THEN EXCLUDED.checksum
                               ELSE $table.checksum
                             END,
             not_seen_count = 0
-          RETURNING object_id
+          RETURNING object_id, resource_group_id
         )
-        SELECT i.object_id
+        SELECT u.object_id
         FROM input_with_old i
-        JOIN upsert u USING (object_id)
+        JOIN upsert u USING (resource_group_id)
         WHERE i.old_checksum IS DISTINCT FROM i.checksum
+           OR i.old_object_id IS DISTINCT FROM i.object_id
         """.trimIndent()
 
     private val batchUpsertSql =
@@ -103,15 +110,17 @@ open class GroupsRepository(
           SELECT *
           FROM unnest(
             :objectIds::uuid[],
+            :resourceGroupIds::bigint[],
             :checksums::bytea[],
             :lastSeenAts::timestamptz[]
-          ) AS t(object_id, checksum, last_seen_at)
+          ) AS t(object_id, resource_group_id, checksum, last_seen_at)
         )
-        INSERT INTO $table (object_id, checksum, last_seen_at, not_seen_count)
-        SELECT object_id, checksum, last_seen_at, 0
+        INSERT INTO $table (object_id, resource_group_id, checksum, last_seen_at, not_seen_count)
+        SELECT object_id, resource_group_id, checksum, last_seen_at, 0
         FROM input
-        ON CONFLICT (object_id) DO UPDATE
+        ON CONFLICT (resource_group_id) DO UPDATE
         SET
+          object_id = EXCLUDED.object_id,
           checksum = EXCLUDED.checksum,
           last_seen_at = EXCLUDED.last_seen_at,
           not_seen_count = 0
@@ -124,6 +133,20 @@ open class GroupsRepository(
           FROM $table
           WHERE object_id = :objectId
         )
+        """.trimIndent()
+
+    private val findChecksumByIdSql =
+        """
+        SELECT checksum
+        FROM $table
+        WHERE object_id = :objectId
+        """.trimIndent()
+
+    private val findObjectIdByResourceGroupIdSql =
+        """
+        SELECT object_id
+        FROM $table
+        WHERE resource_group_id = :resourceGroupId
         """.trimIndent()
 
     override fun findStaleObjectIds(cutoff: Instant): List<UUID> {
@@ -154,6 +177,7 @@ open class GroupsRepository(
         if (rows.isEmpty()) return emptySet()
 
         val objectIds = rows.map { it.objectId }.toTypedArray()
+        val resourceGroupIds = rows.map { it.resourceGroupId }.toTypedArray()
         val checksums = rows.map { it.checksum }.toTypedArray()
         val lastSeenAts = rows.map { it.lastSeenAt }.toTypedArray()
 
@@ -161,6 +185,7 @@ open class GroupsRepository(
             val params =
                 MapSqlParameterSource()
                     .addValue("objectIds", conn.createArrayOf("uuid", objectIds))
+                    .addValue("resourceGroupIds", conn.createArrayOf("int8", resourceGroupIds))
                     .addValue("checksums", conn.createArrayOf("bytea", checksums))
                     .addValue("lastSeenAts", conn.createArrayOf("timestamptz", lastSeenAts))
 
@@ -175,6 +200,7 @@ open class GroupsRepository(
         if (rows.isEmpty()) return
 
         val objectIds = rows.map { it.objectId }.toTypedArray()
+        val resourceGroupIds = rows.map { it.resourceGroupId }.toTypedArray()
         val checksums = rows.map { it.checksum }.toTypedArray()
         val lastSeenAts = rows.map { it.lastSeenAt }.toTypedArray()
 
@@ -182,6 +208,7 @@ open class GroupsRepository(
             val params =
                 MapSqlParameterSource()
                     .addValue("objectIds", conn.createArrayOf("uuid", objectIds))
+                    .addValue("resourceGroupIds", conn.createArrayOf("int8", resourceGroupIds))
                     .addValue("checksums", conn.createArrayOf("bytea", checksums))
                     .addValue("lastSeenAts", conn.createArrayOf("timestamptz", lastSeenAts))
 
@@ -220,5 +247,23 @@ open class GroupsRepository(
         val params = MapSqlParameterSource().addValue("objectId", objectId)
 
         return jdbc.queryForObject(existsByIdSql, params, Boolean::class.java) ?: false
+    }
+
+    override fun findChecksumById(objectId: UUID): Checksum? {
+        val params = MapSqlParameterSource().addValue("objectId", objectId)
+
+        return jdbc
+            .query(findChecksumByIdSql, params) { rs, _ ->
+                Checksum(rs.getBytes("checksum"))
+            }.firstOrNull()
+    }
+
+    override fun findObjectIdByResourceGroupId(resourceGroupId: Long): UUID? {
+        val params = MapSqlParameterSource().addValue("resourceGroupId", resourceGroupId)
+
+        return jdbc
+            .query(findObjectIdByResourceGroupIdSql, params) { rs, _ ->
+                rs.getObject("object_id", UUID::class.java)
+            }.firstOrNull()
     }
 }

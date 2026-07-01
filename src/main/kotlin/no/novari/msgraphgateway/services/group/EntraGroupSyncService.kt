@@ -1,4 +1,4 @@
-package no.novari.msgraphgateway.services
+package no.novari.msgraphgateway.services.group
 
 import com.microsoft.graph.models.Group
 import kotlinx.coroutines.*
@@ -265,18 +265,31 @@ class EntraGroupSyncService(
         coroutineScope {
             data class Computed<DTO>(
                 val id: UUID,
+                val resourceGroupId: Long,
                 val dto: DTO,
                 val checksum: Checksum,
             )
 
             val computed =
                 candidates
-                    .map { (id, group) ->
+                    .mapNotNull { (id, group) ->
+                        val resourceGroupId =
+                            group.resourceGroupIdOrNull()
+                                ?: run {
+                                    log.debug("Skipping group {} because resourceGroupId is missing or invalid", id)
+                                    return@mapNotNull null
+                                }
+
                         async(Dispatchers.Default) {
                             val dto = toDto(group)
 
                             checksumPermits.withPermit {
-                                Computed(id, dto, checksum(dto))
+                                Computed(
+                                    id = id,
+                                    resourceGroupId = resourceGroupId,
+                                    dto = dto,
+                                    checksum = checksum(dto),
+                                )
                             }
                         }
                     }.awaitAll()
@@ -285,7 +298,13 @@ class EntraGroupSyncService(
             val dtoById = HashMap<UUID, DTO>(computed.size)
 
             for (c in computed) {
-                rows += GroupStateRepository.UpsertRow(c.id, c.checksum, now)
+                rows +=
+                    GroupStateRepository.UpsertRow(
+                        objectId = c.id,
+                        resourceGroupId = c.resourceGroupId,
+                        checksum = c.checksum,
+                        lastSeenAt = now,
+                    )
                 dtoById[c.id] = c.dto
             }
 
@@ -296,6 +315,17 @@ class EntraGroupSyncService(
         val rows: List<GroupStateRepository.UpsertRow>,
         val dtoById: Map<UUID, DTO>,
     )
+
+    private fun Group.resourceGroupIdOrNull(): Long? {
+        val attr =
+            configGroup.resourceGroupIdAttribute
+                ?.takeIf { it.isNotBlank() }
+                ?: return null
+
+        return additionalData[attr]
+            ?.toString()
+            ?.toLongOrNull()
+    }
 
     private fun Group.matchesConfiguredGroup(): Boolean {
         val name = displayName ?: return false

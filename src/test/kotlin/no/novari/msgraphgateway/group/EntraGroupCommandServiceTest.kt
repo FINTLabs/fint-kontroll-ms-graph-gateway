@@ -11,7 +11,10 @@ import io.mockk.slot
 import io.mockk.verify
 import no.novari.msgraphgateway.config.ConfigGroup
 import no.novari.msgraphgateway.kafka.group.ResourceGroup
+import no.novari.msgraphgateway.kafka.group.ResourceGroupOperation
+import no.novari.msgraphgateway.services.group.EntraGroupCommandService
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -20,6 +23,7 @@ import org.junit.jupiter.api.assertThrows
 class EntraGroupCommandServiceTest {
     private val graphServiceClient = mockk<GraphServiceClient>()
     private val groupsRequestBuilder = mockk<GroupsRequestBuilder>()
+    private val entraGroupMapper = mockk<EntraGroupMapper>()
 
     private val configGroup =
         ConfigGroup(
@@ -30,6 +34,7 @@ class EntraGroupCommandServiceTest {
         EntraGroupCommandService(
             graphServiceClient = graphServiceClient,
             configGroup = configGroup,
+            entraGroupMapper = entraGroupMapper,
         )
 
     private fun mockGroupsResponsePages(
@@ -70,18 +75,31 @@ class EntraGroupCommandServiceTest {
 
         every {
             groupsRequestBuilder.post(capture(slot))
-        } returns Group()
+        } returns
+            Group().apply {
+                id = "group-123"
+            }
+
+        every {
+            entraGroupMapper.buildDisplayName(any())
+        } returns "TestGroup_SUFFIX"
+
+        every {
+            entraGroupMapper.buildMailNickname(any())
+        } returns "testgroup-suffix"
 
         configGroup.filterMode = ConfigGroup.FilterMode.SUFFIX
         configGroup.suffix = "_SUFFIX"
 
-        service.createGroup(
-            ResourceGroup(
-                id = "12345",
-                resourceName = "TestGroup",
-                identityProviderGroupObjectId = null,
-            ),
-        )
+        val result =
+            service.createGroup(
+                ResourceGroup(
+                    operation = ResourceGroupOperation.CREATE,
+                    id = "12345",
+                    resourceName = "TestGroup",
+                    groupObjectId = null,
+                ),
+            )
 
         val group = slot.captured
 
@@ -90,9 +108,14 @@ class EntraGroupCommandServiceTest {
         assertEquals(true, group.securityEnabled)
         assertEquals("testgroup-suffix", group.mailNickname)
         assertEquals("12345", group.additionalData["extension_resourceGroupId"])
+        assertEquals(true, result.success)
+        assertEquals("group-123", result.groupId)
+        assertEquals("Created Entra group", result.message)
 
         verify(exactly = 1) {
             groupsRequestBuilder.post(any<Group>())
+            entraGroupMapper.buildDisplayName(any())
+            entraGroupMapper.buildMailNickname(any())
         }
     }
 
@@ -104,36 +127,53 @@ class EntraGroupCommandServiceTest {
 
         every { groupsRequestBuilder.byGroupId(groupId) } returns groupItemRequestBuilder
         every { groupItemRequestBuilder.patch(capture(slot)) } returns Group()
+        every {
+            entraGroupMapper.buildDisplayName(any())
+        } returns "UpdatedGroup_SUFFIX"
+
         configGroup.filterMode = ConfigGroup.FilterMode.SUFFIX
         configGroup.suffix = "_SUFFIX"
 
-        service.updateGroup(
-            ResourceGroup(
-                id = "12345",
-                resourceName = "UpdatedGroup",
-                identityProviderGroupObjectId = groupId,
-            ),
-        )
+        val result =
+            service.updateGroup(
+                ResourceGroup(
+                    operation = ResourceGroupOperation.UPDATE,
+                    id = "12345",
+                    resourceName = "UpdatedGroup",
+                    groupObjectId = groupId,
+                ),
+            )
 
         val group = slot.captured
 
         assertEquals("UpdatedGroup_SUFFIX", group.displayName)
         assertEquals("12345", group.additionalData["extension_resourceGroupId"])
+        assertEquals(true, result.success)
+        assertEquals(groupId, result.groupId)
+        assertEquals("Updated Entra group", result.message)
 
         verify(exactly = 1) {
+            groupsRequestBuilder.byGroupId(groupId)
             groupItemRequestBuilder.patch(any<Group>())
+            entraGroupMapper.buildDisplayName(any())
         }
     }
 
     @Test
     fun `updateGroup does nothing when group id is missing`() {
-        service.updateGroup(
-            ResourceGroup(
-                id = "12345",
-                resourceName = "UpdatedGroup",
-                identityProviderGroupObjectId = null,
-            ),
-        )
+        val result =
+            service.updateGroup(
+                ResourceGroup(
+                    operation = ResourceGroupOperation.UPDATE,
+                    id = "12345",
+                    resourceName = "UpdatedGroup",
+                    groupObjectId = null,
+                ),
+            )
+
+        assertFalse(result.success)
+        assertNull(result.groupId)
+        assertEquals("Missing identityProviderGroupObjectId", result.message)
 
         verify(exactly = 0) {
             groupsRequestBuilder.byGroupId(any())

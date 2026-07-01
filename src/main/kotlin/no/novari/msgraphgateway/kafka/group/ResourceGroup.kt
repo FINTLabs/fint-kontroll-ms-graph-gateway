@@ -1,11 +1,8 @@
 package no.novari.msgraphgateway.kafka.group
 
 data class ResourceGroup(
-    val id: String? = null,
-    val resourceId: String? = null,
-    val displayName: String? = null,
-    val identityProviderGroupObjectId: String? = null,
+    val operation: ResourceGroupOperation,
+    val id: String,
+    val groupObjectId: String? = null,
     val resourceName: String? = null,
-    val resourceType: String? = null,
-    val resourceLimit: String? = null,
 )

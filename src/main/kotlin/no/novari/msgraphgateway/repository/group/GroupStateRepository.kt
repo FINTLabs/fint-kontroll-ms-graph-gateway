@@ -7,6 +7,7 @@ import java.util.UUID
 interface GroupStateRepository {
     data class UpsertRow(
         val objectId: UUID,
+        val resourceGroupId: Long,
         val checksum: Checksum,
         val lastSeenAt: Instant,
     )
@@ -29,6 +30,10 @@ interface GroupStateRepository {
     fun incrementNotSeenCount(objectIds: Collection<UUID>)
 
     fun existsById(objectId: UUID): Boolean
+
+    fun findChecksumById(objectId: UUID): Checksum?
+
+    fun findObjectIdByResourceGroupId(resourceGroupId: Long): UUID?
 
     fun getCount(): Int
 }

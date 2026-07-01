@@ -5,14 +5,16 @@ import com.microsoft.graph.serviceclient.GraphServiceClient
 import io.mockk.*
 import kotlinx.coroutines.test.runTest
 import no.novari.msgraphgateway.config.ConfigGroup
+import no.novari.msgraphgateway.config.ConfigUser
 import no.novari.msgraphgateway.entra.DeltaLinkStore
-import no.novari.msgraphgateway.services.EntraGroupSyncService
+import no.novari.msgraphgateway.services.group.EntraGroupSyncService
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import java.time.Instant
 
 class MsGraphGroupTest {
     private val configGroup = mockk<ConfigGroup>()
+    private val configUser = mockk<ConfigUser>()
     private val graphServiceClient = mockk<GraphServiceClient>(relaxed = true)
     private val groupSyncService = mockk<EntraGroupSyncService>()
     private val deltaLinkStore = mockk<DeltaLinkStore>()
@@ -49,6 +51,7 @@ class MsGraphGroupTest {
                     graphServiceClient = graphServiceClient,
                     groupSyncService = groupSyncService,
                     deltaLinkStore = deltaLinkStore,
+                    configUser = configUser,
                 )
 
             val before = Instant.now()

@@ -45,7 +45,7 @@ class ResourceGroupConsumer(
             .createRecordListenerContainerFactory(
                 ResourceGroup::class.java,
                 { record: ConsumerRecord<String, ResourceGroup> ->
-                    resourceGroupConsumerService.processEntity(
+                    resourceGroupConsumerService.process(
                         record.value(),
                         record.key(),
                     )

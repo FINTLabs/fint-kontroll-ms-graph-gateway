@@ -2,7 +2,6 @@ package no.novari.msgraphgateway.controller
 
 import no.fintlabs.util.OnlyDevelopers
 import no.novari.msgraphgateway.group.MsGraphGroup
-import no.novari.msgraphgateway.services.GroupService
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
@@ -19,12 +18,11 @@ data class ErrorResponseResourceId(
 @RequestMapping("/groups")
 class GroupController(
     private val msGraphGroup: MsGraphGroup,
-    private val groupService: GroupService,
 ) {
     @OnlyDevelopers
     @PostMapping("/full-sync")
     fun triggerGroupsFullSync(): ResponseEntity<TriggerResponse> {
-        groupService.triggerFullImport(false)
+        msGraphGroup.requestFullImport(false)
 
         return ResponseEntity
             .status(HttpStatus.ACCEPTED)
@@ -44,7 +42,7 @@ class GroupController(
     @OnlyDevelopers
     @PostMapping("/republish-and-full-sync")
     fun triggerRepublishAndFullSync(): ResponseEntity<TriggerResponse> {
-        groupService.triggerFullImport(true)
+        msGraphGroup.requestFullImport(true)
 
         return ResponseEntity
             .status(HttpStatus.ACCEPTED)
@@ -56,7 +54,7 @@ class GroupController(
     fun getGroupInfo(
         @PathVariable groupId: String,
     ): ResponseEntity<*> {
-        val group = groupService.getGroupInfo(groupId)
+        val group = msGraphGroup.getGroupInfo(groupId)
 
         return if (group == null) {
             ResponseEntity
@@ -72,7 +70,7 @@ class GroupController(
     fun getGroupInfoByResourceGroupId(
         @PathVariable id: Long,
     ): ResponseEntity<*> {
-        val group = groupService.getGroupInfoByResourceGroupId(id)
+        val group = msGraphGroup.getGroupInfoByResourceGroupId(id)
 
         return if (group == null) {
             ResponseEntity
