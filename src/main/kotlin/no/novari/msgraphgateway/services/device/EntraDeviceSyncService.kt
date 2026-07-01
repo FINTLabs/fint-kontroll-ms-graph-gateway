@@ -1,6 +1,6 @@
 @file:Suppress("ktlint:standard:no-wildcard-imports")
 
-package no.novari.msgraphgateway.device
+package no.novari.msgraphgateway.services.device
 
 import com.microsoft.graph.models.Device
 import kotlinx.coroutines.*

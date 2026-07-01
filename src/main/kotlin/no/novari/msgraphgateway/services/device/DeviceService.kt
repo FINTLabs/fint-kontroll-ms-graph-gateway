@@ -1,4 +1,4 @@
-package no.novari.msgraphgateway.services
+package no.novari.msgraphgateway.services.device
 
 import no.novari.msgraphgateway.device.MsGraphDevice
 import no.novari.msgraphgateway.user.MsGraphUser
