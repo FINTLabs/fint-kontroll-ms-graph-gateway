@@ -22,8 +22,12 @@ class ChecksumService {
             .builder()
             .configure(MapperFeature.SORT_PROPERTIES_ALPHABETICALLY, true)
             .configure(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS, true)
-            .serializationInclusion(JsonInclude.Include.NON_NULL)
-            .build()
+            .defaultPropertyInclusion(
+                JsonInclude.Value.construct(
+                    JsonInclude.Include.NON_NULL,
+                    JsonInclude.Include.NON_NULL,
+                ),
+            ).build()
 
     fun checksum(dto: Any?): Checksum {
         if (dto == null) return Checksum(ByteArray(0))
