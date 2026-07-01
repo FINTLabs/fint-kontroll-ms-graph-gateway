@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.stereotype.Component
 import java.util.LinkedHashSet
+import kotlin.reflect.full.memberProperties
 
 @Component
 @ConfigurationProperties(prefix = "ms-graph.user")
@@ -43,16 +44,6 @@ class ConfigUser {
     var staleAfterDays: Int = 7
     var acceptedDeviationPercent: Int? = null
     var minNotSeenCount: Int = 7
-
-    @PostConstruct
-    fun dumpConfig() {
-        val log = LoggerFactory.getLogger(ConfigUser::class.java)
-        log.info("useSameIdNumAttribute={}", useSameIdNumAttribute)
-        log.info("employeeidattribute={}", employeeidattribute)
-        log.info("studentidattribute={}", studentidattribute)
-        log.info("userIdNumAttribute={}", userIdNumAttribute)
-        log.info("validatorAttribute={}", validatorAttribute)
-    }
 
     fun allAttributes(): List<String> {
         val allAttributes = mutableListOf<String>()
@@ -104,5 +95,22 @@ class ConfigUser {
 
         val orderedUnique = LinkedHashSet(cleaned)
         return orderedUnique.toTypedArray()
+    }
+
+    @PostConstruct
+    fun dumpConfig() {
+        val log = LoggerFactory.getLogger(ConfigUser::class.java)
+
+        this::class
+            .memberProperties
+            .sortedBy { it.name }
+            .forEach { property ->
+                val value = property.getter.call(this)
+                if (value != null) {
+                    log.debug("{}={}", property.name, value)
+                }
+            }
+
+        log.debug("userAttributes={}", userAttributes)
     }
 }

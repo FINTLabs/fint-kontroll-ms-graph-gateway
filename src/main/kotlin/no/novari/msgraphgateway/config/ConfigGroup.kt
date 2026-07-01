@@ -1,6 +1,9 @@
 package no.novari.msgraphgateway.config
 
+import jakarta.annotation.PostConstruct
+import org.slf4j.LoggerFactory
 import org.springframework.boot.context.properties.ConfigurationProperties
+import kotlin.reflect.full.memberProperties
 
 @ConfigurationProperties(prefix = "ms-graph.group")
 class ConfigGroup(
@@ -12,7 +15,7 @@ class ConfigGroup(
     var allowGroupDelete: Boolean? = null,
     var groupPagingSize: Int? = null,
     var uniqueNamePrefix: String? = null,
-    var minNotSeenCount: Int = 3,
+    var minNotSeenCount: Int,
 ) {
     enum class FilterMode {
         PREFIX,
@@ -40,5 +43,20 @@ class ConfigGroup(
         allAttribs += groupAttributes
         resourceGroupIdAttribute?.let { allAttribs += it }
         return allAttribs.toTypedArray()
+    }
+
+    @PostConstruct
+    fun dumpConfig() {
+        val log = LoggerFactory.getLogger(ConfigGroup::class.java)
+
+        this::class
+            .memberProperties
+            .sortedBy { it.name }
+            .forEach { property ->
+                val value = property.getter.call(this)
+                if (value != null) {
+                    log.debug("{}={}", property.name, value)
+                }
+            }
     }
 }
