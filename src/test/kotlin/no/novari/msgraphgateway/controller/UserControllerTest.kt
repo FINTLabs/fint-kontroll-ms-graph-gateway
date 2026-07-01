@@ -4,22 +4,22 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import no.novari.msgraphgateway.dto.UserWithGroupsDto
-import no.novari.msgraphgateway.services.GroupService
-import no.novari.msgraphgateway.services.UserService
+import no.novari.msgraphgateway.group.MsGraphGroup
+import no.novari.msgraphgateway.services.user.UserService
 import no.novari.msgraphgateway.user.MsGraphUser
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 
 class UserControllerTest {
-    private lateinit var groupService: GroupService
+    private lateinit var msGraphGroup: MsGraphGroup
     private lateinit var msGraphUser: MsGraphUser
     private lateinit var userService: UserService
     private lateinit var controller: UserController
 
     @Test
     fun getUserWithGroupsReturnsNotFoundWhenUserIsMissing() {
-        every { groupService.getEntraUserWithGroups("missing") } returns UserWithGroupsDto(user = null)
+        every { msGraphGroup.getEntraUserWithGroups("missing") } returns UserWithGroupsDto(user = null)
 
         val response = controller.getUserWithGroups("missing")
 
@@ -52,9 +52,9 @@ class UserControllerTest {
 
     @BeforeEach
     fun setUp() {
-        groupService = mockk()
+        msGraphGroup = mockk(relaxed = true)
         msGraphUser = mockk(relaxed = true)
         userService = mockk(relaxed = true)
-        controller = UserController(groupService, msGraphUser, userService)
+        controller = UserController(msGraphUser, userService, msGraphGroup)
     }
 }

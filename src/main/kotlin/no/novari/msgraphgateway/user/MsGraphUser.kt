@@ -11,6 +11,7 @@ import no.novari.msgraphgateway.config.ConfigUser
 import no.novari.msgraphgateway.entra.DeltaLinkStore
 import no.novari.msgraphgateway.repository.user.UserExternalRepository
 import no.novari.msgraphgateway.repository.user.UserRepository
+import no.novari.msgraphgateway.services.user.EntraUserSyncService
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component

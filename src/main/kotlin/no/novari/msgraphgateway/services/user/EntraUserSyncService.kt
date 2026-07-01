@@ -1,4 +1,4 @@
-package no.novari.msgraphgateway.user
+package no.novari.msgraphgateway.services.user
 
 import com.microsoft.graph.models.User
 import kotlinx.coroutines.*

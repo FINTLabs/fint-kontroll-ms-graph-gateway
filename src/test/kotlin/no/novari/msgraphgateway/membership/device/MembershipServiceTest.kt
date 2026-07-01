@@ -19,7 +19,7 @@ import no.novari.msgraphgateway.kafka.membership.EntraMembershipProducer
 import no.novari.msgraphgateway.repository.device.DeviceMembershipEntity
 import no.novari.msgraphgateway.repository.device.DeviceMembershipEntityRepository
 import no.novari.msgraphgateway.repository.device.DeviceMembershipId
-import no.novari.msgraphgateway.services.MembershipService
+import no.novari.msgraphgateway.services.member.MembershipService
 import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.Response

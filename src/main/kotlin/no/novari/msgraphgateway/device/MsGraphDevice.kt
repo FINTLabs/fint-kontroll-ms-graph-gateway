@@ -12,6 +12,7 @@ import kotlinx.coroutines.sync.Mutex
 import no.novari.msgraphgateway.config.ConfigDevice
 import no.novari.msgraphgateway.entra.DeltaLinkStore
 import no.novari.msgraphgateway.repository.device.DeviceRepository
+import no.novari.msgraphgateway.services.device.EntraDeviceSyncService
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component

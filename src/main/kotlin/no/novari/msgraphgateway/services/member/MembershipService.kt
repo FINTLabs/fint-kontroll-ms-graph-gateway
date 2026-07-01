@@ -1,4 +1,4 @@
-package no.novari.msgraphgateway.services
+package no.novari.msgraphgateway.services.member
 
 import com.microsoft.graph.core.content.BatchRequestContent
 import com.microsoft.graph.core.content.BatchResponseContent

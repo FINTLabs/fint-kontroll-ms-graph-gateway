@@ -19,6 +19,7 @@ import no.novari.msgraphgateway.repository.user.UserExternalRepository
 import no.novari.msgraphgateway.repository.user.UserRepository
 import no.novari.msgraphgateway.services.Checksum
 import no.novari.msgraphgateway.services.ChecksumService
+import no.novari.msgraphgateway.services.user.EntraUserSyncService
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach

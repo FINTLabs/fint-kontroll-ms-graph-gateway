@@ -8,7 +8,7 @@ import no.novari.kafka.topic.name.EventTopicNameParameters
 import no.novari.kafka.topic.name.TopicNamePrefixParameters
 import no.novari.msgraphgateway.membership.device.DeviceMembershipProcessingProperties
 import no.novari.msgraphgateway.membership.device.DeviceResourceGroupMembership
-import no.novari.msgraphgateway.services.MembershipService
+import no.novari.msgraphgateway.services.member.MembershipService
 import org.springframework.context.annotation.Bean
 import org.springframework.kafka.listener.ConcurrentMessageListenerContainer
 import org.springframework.stereotype.Component
