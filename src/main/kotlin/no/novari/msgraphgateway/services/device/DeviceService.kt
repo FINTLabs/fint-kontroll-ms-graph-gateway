@@ -1,7 +1,6 @@
 package no.novari.msgraphgateway.services.device
 
 import no.novari.msgraphgateway.device.MsGraphDevice
-import no.novari.msgraphgateway.user.MsGraphUser
 import org.springframework.stereotype.Service
 
 @Service

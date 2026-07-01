@@ -28,6 +28,7 @@ class EntraGroupCommandServiceTest {
     private val configGroup =
         ConfigGroup(
             resourceGroupIdAttribute = "extension_resourceGroupId",
+            minNotSeenCount = 2,
         )
 
     private val service =
