@@ -390,7 +390,7 @@ class MsGraphDevice(
             log.error("Graph call failed with error code {}. {}", ae.responseStatusCode, ae.message)
             throw ae
         } catch (e: Exception) {
-            throw if (e is RuntimeException) e else CompletionException(e)
+            throw e as? RuntimeException ?: CompletionException(e)
         }
 
     private fun logElapsed(

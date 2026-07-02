@@ -9,7 +9,6 @@ import no.novari.msgraphgateway.services.ChecksumService
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.time.Instant
-import java.util.Arrays
 import java.util.UUID
 
 @Service
@@ -23,7 +22,7 @@ class EntraGroupStateService(
         val storedChecksum = groupRepository.findChecksumById(objectId) ?: return false
         val incomingChecksum = checksumService.checksum(entraGroup)
 
-        return Arrays.equals(storedChecksum.bytes, incomingChecksum.bytes)
+        return storedChecksum.bytes.contentEquals(incomingChecksum.bytes)
     }
 
     fun findObjectIdByResourceGroupId(resourceGroupId: String): String? {

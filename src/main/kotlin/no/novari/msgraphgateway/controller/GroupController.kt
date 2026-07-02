@@ -59,7 +59,7 @@ class GroupController(
         return if (group == null) {
             ResponseEntity
                 .status(HttpStatus.NOT_FOUND)
-                .body(ErrorResponse("Group not found", groupId))
+                .body(ErrorResponse("Group not found"))
         } else {
             ResponseEntity.ok(group)
         }
@@ -75,7 +75,7 @@ class GroupController(
         return if (group == null) {
             ResponseEntity
                 .status(HttpStatus.NOT_FOUND)
-                .body(ErrorResponseResourceId("Group with resourceID: $id not found in Entra"))
+                .body(ErrorResponseResourceId("Group not found in Entra"))
         } else {
             ResponseEntity.ok(group)
         }
