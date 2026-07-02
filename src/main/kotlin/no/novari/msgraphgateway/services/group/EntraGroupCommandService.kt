@@ -117,10 +117,10 @@ class EntraGroupCommandService(
             },
             onFailure = {
                 log.error(
-                    "Failed updating Entra group {} for ResourceGroupId {}",
+                    "Failed updating Entra group {} for ResourceGroupId {}. Error {}",
                     groupId,
                     resourceGroup.id,
-                    it,
+                    it.message,
                 )
 
                 EntraGroupCommandResult(
