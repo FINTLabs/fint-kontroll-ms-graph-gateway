@@ -45,6 +45,15 @@ class ResourceGroupConsumerService(
         resourceGroup: ResourceGroup,
         traceId: String,
     ) {
+        if (resourceGroup.id.toLongOrNull() == null) {
+            log.warn(
+                "Cannot create Entra group; resourceGroup.id is required and must be numeric. resourceGroupId={}, traceId={}",
+                resourceGroup.id,
+                traceId,
+            )
+            return
+        }
+
         if (resourceGroup.resourceName.isNullOrBlank()) {
             log.warn(
                 "Cannot create Entra group for ResourceGroupId {}; resourceName is required. traceId={}",
@@ -206,7 +215,7 @@ class ResourceGroupConsumerService(
                 resourceGroup.id,
                 result.message,
                 traceId,
-                result.error,
+                result.message,
             )
             return
         }

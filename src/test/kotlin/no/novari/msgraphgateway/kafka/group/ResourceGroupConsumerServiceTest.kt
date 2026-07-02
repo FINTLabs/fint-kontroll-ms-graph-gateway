@@ -224,6 +224,20 @@ class ResourceGroupConsumerServiceTest {
     }
 
     @Test
+    fun `process does not call graph when create has invalid resourceGroupId`() {
+        val resourceGroup = createResourceGroup(id = "abc")
+
+        service.process(resourceGroup, "trace-123")
+
+        verify(exactly = 0) {
+            entraGroupStateService.findObjectIdByResourceGroupId(any())
+            entraGroupCommandService.findGroupIdByResourceGroupId(any())
+            entraGroupCommandService.createGroup(any())
+            entraGroupStateService.storeAndPublishIfChanged(any(), any(), any())
+        }
+    }
+
+    @Test
     fun `process does not call graph when create has groupObjectId`() {
         val resourceGroup =
             createResourceGroup(
@@ -297,12 +311,13 @@ class ResourceGroupConsumerServiceTest {
     }
 
     private fun createResourceGroup(
+        id: String = "12345",
         resourceName: String? = "TestGroup",
         groupObjectId: String? = null,
     ): ResourceGroup =
         ResourceGroup(
             operation = ResourceGroupOperation.CREATE,
-            id = "12345",
+            id = id,
             resourceName = resourceName,
             groupObjectId = groupObjectId,
         )
