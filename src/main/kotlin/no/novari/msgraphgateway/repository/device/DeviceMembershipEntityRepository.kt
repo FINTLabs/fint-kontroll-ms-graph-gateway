@@ -6,6 +6,7 @@ import org.springframework.jdbc.core.RowMapper
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
 import java.time.OffsetDateTime
+import java.util.UUID
 
 @Repository
 class DeviceMembershipEntityRepository(
@@ -81,12 +82,12 @@ class DeviceMembershipEntityRepository(
                 DeviceMembershipEntity(
                     id =
                         DeviceMembershipId(
-                            rs.getObject("device_ref", java.util.UUID::class.java),
-                            rs.getObject("group_ref", java.util.UUID::class.java),
+                            rs.getObject("device_ref", UUID::class.java),
+                            rs.getObject("group_ref", UUID::class.java),
                         ),
                     status = EntraStatus.valueOf(rs.getString("status")),
-                    createdAt = rs.getObject("created_at", java.time.OffsetDateTime::class.java),
-                    lastUpdatedAt = rs.getObject("last_updated_at", java.time.OffsetDateTime::class.java),
+                    createdAt = rs.getObject("created_at", OffsetDateTime::class.java),
+                    lastUpdatedAt = rs.getObject("last_updated_at", OffsetDateTime::class.java),
                 )
             }
     }
