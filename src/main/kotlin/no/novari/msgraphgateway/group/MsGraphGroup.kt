@@ -1,8 +1,8 @@
 package no.novari.msgraphgateway.group
 
 import com.microsoft.graph.groups.delta.DeltaGetResponse
+import com.microsoft.graph.models.Group
 import com.microsoft.graph.serviceclient.GraphServiceClient
-import com.microsoft.graph.users.item.getmembergroups.GetMemberGroupsPostRequestBody
 import com.microsoft.kiota.ApiException
 import jakarta.annotation.PostConstruct
 import jakarta.annotation.PreDestroy
@@ -345,51 +345,7 @@ class MsGraphGroup(
                     ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "User not found: $userId")
 
             val entraUser = EntraUser(user, configUser)
-
-            val requestBody =
-                GetMemberGroupsPostRequestBody().apply {
-                    securityEnabledOnly = true
-                }
-
-            val groupIds: List<String> =
-                graphServiceClient
-                    .users()
-                    .byUserId(userId)
-                    .memberGroups
-                    .post(requestBody)
-                    ?.value
-                    ?: emptyList()
-
-            val selectionCriteriaGroup =
-                arrayOf(
-                    "id",
-                    "displayName",
-                    configGroup.resourceGroupIdAttribute ?: "",
-                ).filter { it.isNotBlank() }.toTypedArray()
-
-            val entraGroups = mutableListOf<EntraGroup>()
-
-            for (groupId in groupIds) {
-                val group =
-                    graphServiceClient
-                        .groups()
-                        .byGroupId(groupId)
-                        .get { requestConfig ->
-                            requestConfig.queryParameters?.select = selectionCriteriaGroup
-                        } ?: continue
-
-                val displayName = group.displayName
-                val additionalData = group.additionalData
-                val hasSuffix = configGroup.suffix?.let { s -> displayName?.endsWith(s) == true } ?: false
-                val hasResourceAttr =
-                    configGroup.resourceGroupIdAttribute
-                        ?.let { key -> additionalData.containsKey(key) }
-                        ?: false
-
-                if (hasSuffix && hasResourceAttr) {
-                    entraGroups += EntraGroup(group, configGroup)
-                }
-            }
+            val entraGroups = getTransitiveFintKontrollGroups(userId)
 
             log.info(
                 "*** <<< Rest service found userId {}. User is member of {} FINT kontroll groups >>> ***",
@@ -402,6 +358,64 @@ class MsGraphGroup(
             log.error("Failed to fetch user or groups: {}", ex.message)
             UserWithGroupsDto()
         }
+
+    private fun getTransitiveFintKontrollGroups(userId: String): List<EntraGroup> {
+        val entraGroups = mutableListOf<EntraGroup>()
+        val selectionCriteriaGroup = groupLookupSelection()
+
+        var response =
+            graphServiceClient
+                .users()
+                .byUserId(userId)
+                .transitiveMemberOf()
+                .graphGroup()
+                .get { requestConfig ->
+                    requestConfig.queryParameters?.select = selectionCriteriaGroup
+                    requestConfig.queryParameters?.top = 999
+                }
+
+        while (response != null) {
+            response.value
+                .orEmpty()
+                .asSequence()
+                .filter(::isWantedGroup)
+                .map { EntraGroup(it, configGroup) }
+                .toCollection(entraGroups)
+
+            response =
+                response.odataNextLink
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { nextLink ->
+                        graphServiceClient
+                            .users()
+                            .byUserId(userId)
+                            .transitiveMemberOf()
+                            .graphGroup()
+                            .withUrl(nextLink)
+                            .get()
+                    }
+        }
+
+        return entraGroups
+    }
+
+    private fun groupLookupSelection(): Array<String> =
+        arrayOf(
+            "id",
+            "displayName",
+            "securityEnabled",
+            configGroup.resourceGroupIdAttribute ?: "",
+        ).filter { it.isNotBlank() }.toTypedArray()
+
+    private fun isWantedGroup(group: Group): Boolean {
+        val hasSuffix = configGroup.suffix?.let { suffix -> group.displayName?.endsWith(suffix) == true } ?: false
+        val hasResourceAttr =
+            configGroup.resourceGroupIdAttribute
+                ?.let { key -> group.additionalData.containsKey(key) }
+                ?: false
+
+        return group.securityEnabled == true && hasSuffix && hasResourceAttr
+    }
 
     fun getGroupInfo(groupId: String): EntraGroup? =
         try {

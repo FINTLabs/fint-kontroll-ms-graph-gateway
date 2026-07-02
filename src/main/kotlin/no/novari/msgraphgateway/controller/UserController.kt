@@ -10,7 +10,6 @@ import org.springframework.web.bind.annotation.*
 
 data class ErrorResponse(
     val error: String,
-    val objectId: String? = null,
 )
 
 data class TriggerResponse(
@@ -34,7 +33,7 @@ class UserController(
         return if (dto.user == null) {
             ResponseEntity
                 .status(HttpStatus.NOT_FOUND)
-                .body(ErrorResponse("User not found", objectId))
+                .body(ErrorResponse("User not found"))
         } else {
             ResponseEntity.ok(dto)
         }
