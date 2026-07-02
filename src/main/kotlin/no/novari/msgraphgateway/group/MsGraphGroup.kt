@@ -408,13 +408,43 @@ class MsGraphGroup(
         ).filter { it.isNotBlank() }.toTypedArray()
 
     private fun isWantedGroup(group: Group): Boolean {
-        val hasSuffix = configGroup.suffix?.let { suffix -> group.displayName?.endsWith(suffix) == true } ?: false
+        if (group.securityEnabled != true) {
+            return false
+        }
+
+        val name = group.displayName ?: return false
+        val prefix = configGroup.prefix?.trim().orEmpty()
+        val suffix = configGroup.suffix?.trim().orEmpty()
+
+        val matchesName =
+            when (configGroup.filterMode) {
+                ConfigGroup.FilterMode.NONE -> {
+                    true
+                }
+
+                ConfigGroup.FilterMode.PREFIX -> {
+                    prefix.isNotBlank() && name.startsWith(prefix, ignoreCase = true)
+                }
+
+                ConfigGroup.FilterMode.SUFFIX -> {
+                    suffix.isNotBlank() && name.endsWith(suffix, ignoreCase = true)
+                }
+
+                ConfigGroup.FilterMode.BOTH -> {
+                    prefix.isNotBlank() &&
+                        suffix.isNotBlank() &&
+                        name.startsWith(prefix, ignoreCase = true) &&
+                        name.endsWith(suffix, ignoreCase = true)
+                }
+            }
+
         val hasResourceAttr =
             configGroup.resourceGroupIdAttribute
+                ?.takeIf { it.isNotBlank() }
                 ?.let { key -> group.additionalData.containsKey(key) }
-                ?: false
+                ?: true
 
-        return group.securityEnabled == true && hasSuffix && hasResourceAttr
+        return matchesName && hasResourceAttr
     }
 
     fun getGroupInfo(groupId: String): EntraGroup? =

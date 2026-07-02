@@ -88,6 +88,74 @@ class MsGraphGroupTest {
     }
 
     @Test
+    fun `getEntraUserWithGroups follows configured group filter mode`() {
+        val localConfigGroup =
+            ConfigGroup(minNotSeenCount = 7).apply {
+                prefix = "PRE-"
+                suffix = "-SUF"
+                resourceGroupIdAttribute = "extension_resourceGroupId"
+            }
+        val service =
+            MsGraphGroup(
+                configGroup = localConfigGroup,
+                graphServiceClient = graphServiceClient,
+                groupSyncService = groupSyncService,
+                deltaLinkStore = deltaLinkStore,
+                configUser = ConfigUser(),
+            )
+        val user =
+            User().apply {
+                id = "user-1"
+                userPrincipalName = "user@example.org"
+                accountEnabled = true
+            }
+        val response =
+            GroupCollectionResponse().apply {
+                value =
+                    listOf(
+                        wantedGroup("prefix-only", "PRE-Group", "1"),
+                        wantedGroup("suffix-only", "Group-SUF", "2"),
+                        wantedGroup("both", "PRE-Group-SUF", "3"),
+                        wantedGroup("neither", "Group", "4"),
+                    )
+            }
+
+        every { graphServiceClient.users().byUserId("user-1").get(any()) } returns user
+        every {
+            graphServiceClient
+                .users()
+                .byUserId("user-1")
+                .transitiveMemberOf()
+                .graphGroup()
+                .get(any())
+        } returns response
+
+        localConfigGroup.filterMode = ConfigGroup.FilterMode.PREFIX
+        assertEquals(
+            listOf("prefix-only", "both"),
+            service.getEntraUserWithGroups("user-1").groups.map { it.objectId },
+        )
+
+        localConfigGroup.filterMode = ConfigGroup.FilterMode.SUFFIX
+        assertEquals(
+            listOf("suffix-only", "both"),
+            service.getEntraUserWithGroups("user-1").groups.map { it.objectId },
+        )
+
+        localConfigGroup.filterMode = ConfigGroup.FilterMode.BOTH
+        assertEquals(
+            listOf("both"),
+            service.getEntraUserWithGroups("user-1").groups.map { it.objectId },
+        )
+
+        localConfigGroup.filterMode = ConfigGroup.FilterMode.NONE
+        assertEquals(
+            listOf("prefix-only", "suffix-only", "both", "neither"),
+            service.getEntraUserWithGroups("user-1").groups.map { it.objectId },
+        )
+    }
+
+    @Test
     fun `startFullImport finishes full import cleanup after paging`() =
         runTest {
             val response =
@@ -134,5 +202,17 @@ class MsGraphGroupTest {
 
             assertTrue(cutoffSlot.captured >= before)
             assertTrue(cutoffSlot.captured <= after)
+        }
+
+    private fun wantedGroup(
+        id: String,
+        displayName: String,
+        resourceGroupId: String,
+    ): Group =
+        Group().apply {
+            this.id = id
+            this.displayName = displayName
+            securityEnabled = true
+            additionalData["extension_resourceGroupId"] = resourceGroupId
         }
 }
