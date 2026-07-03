@@ -28,6 +28,7 @@ class EntraGroupCommandService(
                 mailEnabled = false
                 securityEnabled = true
                 mailNickname = entraGroupMapper.buildMailNickname(resourceGroup)
+                uniqueName = resourceGroup.id
 
                 configGroup.resourceGroupIdAttribute
                     ?.takeIf { it.isNotBlank() }
