@@ -198,9 +198,10 @@ class MsGraphGroup(
     }
 
     suspend fun startFullImport(republishAll: Boolean = false) {
-        val cutoff = Instant.now()
+        val runStartTime = Instant.now()
         val trackingId = UUID.randomUUID().toString()
         val selection = configGroup.getGroupAttributesNotMembers()
+        val notSeenIncremented = mutableSetOf<UUID>()
 
         log.info("Starting full import of groups from Microsoft Graph")
         log.debug(
@@ -228,12 +229,14 @@ class MsGraphGroup(
             pageThroughGroups(
                 firstPage = firstPage,
                 isFullImport = true,
-                notSeenIncremented = mutableSetOf(),
+                notSeenIncremented = notSeenIncremented,
                 republishAll = republishAll,
             )
 
+        groupSyncService.markNotSeenGroups(runStartTime, notSeenIncremented)
+
         val deletedGroups =
-            groupSyncService.finishFullImport(cutoff)
+            groupSyncService.finishFullImport(runStartTime)
 
         log.info(
             "Full import of groups completed (fetchedTotal={}, publishedChanged={}, deleted={})",

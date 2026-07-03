@@ -53,7 +53,7 @@ class EntraGroupSyncService(
                 )
             }
 
-        log.info("Found {} stale groups", deletableIds.size)
+        log.info("Found {} stale groups eligible for deletion", deletableIds.size)
 
         if (deletableIds.isEmpty()) return 0
 
@@ -82,6 +82,24 @@ class EntraGroupSyncService(
         return deletedTotal
     }
 
+    suspend fun markNotSeenGroups(
+        cutoff: Instant,
+        notSeenIncremented: MutableSet<UUID>,
+    ): Int {
+        val staleGroupIds =
+            withContext(Dispatchers.IO) {
+                groupRepository.findStaleObjectIds(cutoff)
+            }.filter { notSeenIncremented.add(it) }
+
+        log.info("Marking {} groups missing from full import as not seen", staleGroupIds.size)
+
+        withContext(Dispatchers.IO) {
+            groupRepository.incrementNotSeenCount(staleGroupIds)
+        }
+
+        return staleGroupIds.size
+    }
+
     private suspend fun processBatch(
         batch: List<Group>,
         notSeenIncremented: MutableSet<UUID>,
@@ -95,9 +113,14 @@ class EntraGroupSyncService(
             if (removedGroups.isNotEmpty()) {
                 log.info("There are {} removed groups", removedGroups.size)
 
+                var markedRemovedGroups = 0
                 removedGroups.forEach { group ->
-                    handleRemoved(group.id, notSeenIncremented)
+                    if (handleRemoved(group.id, notSeenIncremented)) {
+                        markedRemovedGroups++
+                    }
                 }
+
+                log.info("Marked {} removed groups as not seen", markedRemovedGroups)
             }
 
             val candidates =
@@ -228,14 +251,14 @@ class EntraGroupSyncService(
     private suspend fun handleRemoved(
         groupId: String?,
         notSeenIncremented: MutableSet<UUID>,
-    ) {
-        if (groupId.isNullOrBlank()) return
+    ): Boolean {
+        if (groupId.isNullOrBlank()) return false
 
-        val objectId = parseObjectIdOrNull(groupId) ?: return
+        val objectId = parseObjectIdOrNull(groupId) ?: return false
 
         if (!notSeenIncremented.add(objectId)) {
             log.debug("Removed group {} already marked not seen in this run; skipping", objectId)
-            return
+            return false
         }
 
         val exists =
@@ -251,8 +274,10 @@ class EntraGroupSyncService(
             }
 
             log.debug("Marked group {} as not seen (+1) due to @removed", objectId)
+            return true
         } else {
             log.debug("Removed group {} not found in DB; skipping", objectId)
+            return false
         }
     }
 

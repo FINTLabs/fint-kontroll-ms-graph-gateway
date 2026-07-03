@@ -104,6 +104,37 @@ class EntraGroupSyncServiceTest {
         }
 
     @Test
+    fun `markNotSeenGroups increments stale groups not already marked in same run`() =
+        runTest {
+            val cutoff = Instant.parse("2026-06-15T10:00:00Z")
+            val alreadyMarkedId = UUID.randomUUID()
+            val staleId = UUID.randomUUID()
+            val notSeenIncremented = mutableSetOf(alreadyMarkedId)
+
+            coEvery {
+                groupRepository.findStaleObjectIds(cutoff)
+            } returns listOf(alreadyMarkedId, staleId)
+
+            coEvery {
+                groupRepository.incrementNotSeenCount(listOf(staleId))
+            } just Runs
+
+            val result = service.markNotSeenGroups(cutoff, notSeenIncremented)
+
+            assertEquals(1, result)
+            assertTrue(notSeenIncremented.contains(alreadyMarkedId))
+            assertTrue(notSeenIncremented.contains(staleId))
+
+            coVerify(exactly = 1) {
+                groupRepository.findStaleObjectIds(cutoff)
+            }
+
+            coVerify(exactly = 1) {
+                groupRepository.incrementNotSeenCount(listOf(staleId))
+            }
+        }
+
+    @Test
     fun `processPage only publishes groups matching prefix and resource group attribute`() =
         runTest {
             val validId = UUID.randomUUID()

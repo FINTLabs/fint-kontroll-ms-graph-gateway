@@ -176,6 +176,11 @@ class MsGraphGroupTest {
             } just Runs
 
             val cutoffSlot = slot<Instant>()
+            val markNotSeenCutoffSlot = slot<Instant>()
+
+            coEvery {
+                groupSyncService.markNotSeenGroups(capture(markNotSeenCutoffSlot), any())
+            } returns 0
 
             coEvery {
                 groupSyncService.finishFullImport(capture(cutoffSlot))
@@ -197,11 +202,23 @@ class MsGraphGroupTest {
             val after = Instant.now()
 
             coVerify(exactly = 1) {
+                groupSyncService.markNotSeenGroups(any(), any())
+            }
+
+            coVerify(exactly = 1) {
                 groupSyncService.finishFullImport(any())
             }
 
+            coVerifyOrder {
+                groupSyncService.markNotSeenGroups(any(), any())
+                groupSyncService.finishFullImport(any())
+            }
+
+            assertTrue(markNotSeenCutoffSlot.captured >= before)
+            assertTrue(markNotSeenCutoffSlot.captured <= after)
             assertTrue(cutoffSlot.captured >= before)
             assertTrue(cutoffSlot.captured <= after)
+            assertEquals(markNotSeenCutoffSlot.captured, cutoffSlot.captured)
         }
 
     private fun wantedGroup(
