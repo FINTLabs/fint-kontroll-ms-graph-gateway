@@ -88,7 +88,7 @@ ms-graph:
     allow-group-delete: false
     unique-name-prefix:
     group-paging-size: 999
-    min-Not-Seen-Count: 2
+    min-Not-Seen-Count: 3
   device:
     device-paging-size: 999
   membership:
