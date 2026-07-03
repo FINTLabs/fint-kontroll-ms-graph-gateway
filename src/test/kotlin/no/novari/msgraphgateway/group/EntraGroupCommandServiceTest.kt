@@ -71,7 +71,7 @@ class EntraGroupCommandServiceTest {
     }
 
     @Test
-    fun `createGroup creates Entra group with suffix and resource group attribute`() {
+    fun `createGroup creates Entra group with suffix and uniqueName and resource group attribute`() {
         val slot = slot<Group>()
 
         every {
@@ -109,6 +109,7 @@ class EntraGroupCommandServiceTest {
         assertEquals(true, group.securityEnabled)
         assertEquals("testgroup-suffix", group.mailNickname)
         assertEquals("12345", group.additionalData["extension_resourceGroupId"])
+        assertEquals("12345", group.uniqueName)
         assertEquals(true, result.success)
         assertEquals("group-123", result.groupId)
         assertEquals("Created Entra group", result.message)
