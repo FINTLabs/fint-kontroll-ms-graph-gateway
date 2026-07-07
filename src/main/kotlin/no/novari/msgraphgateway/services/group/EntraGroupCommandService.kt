@@ -28,12 +28,12 @@ class EntraGroupCommandService(
                 mailEnabled = false
                 securityEnabled = true
                 mailNickname = entraGroupMapper.buildMailNickname(resourceGroup)
-                uniqueName = resourceGroup.id
+                uniqueName = resourceGroup.resourceId
 
                 configGroup.resourceGroupIdAttribute
                     ?.takeIf { it.isNotBlank() }
                     ?.let { attr ->
-                        additionalData[attr] = resourceGroup.id
+                        additionalData[attr] = resourceGroup.resourceId
                     }
             }
 
@@ -46,7 +46,7 @@ class EntraGroupCommandService(
                 log.debug(
                     "Created Entra group {} for ResourceGroupId {}",
                     createdGroup?.id,
-                    resourceGroup.id,
+                    resourceGroup.resourceId,
                 )
 
                 EntraGroupCommandResult(
@@ -58,7 +58,7 @@ class EntraGroupCommandService(
             onFailure = {
                 log.error(
                     "Failed creating Entra group for ResourceGroupId {}",
-                    resourceGroup.id,
+                    resourceGroup.resourceId,
                     it,
                 )
 
@@ -72,12 +72,12 @@ class EntraGroupCommandService(
     }
 
     fun updateGroup(resourceGroup: ResourceGroup): EntraGroupCommandResult {
-        val groupId = resourceGroup.groupObjectId
+        val groupId = resourceGroup.idpGroupObjectId
 
         if (groupId.isNullOrBlank()) {
             log.warn(
                 "Cannot update group for ResourceGroupId {}; missing identityProviderGroupObjectId",
-                resourceGroup.id,
+                resourceGroup.resourceId,
             )
 
             return EntraGroupCommandResult(
@@ -93,7 +93,7 @@ class EntraGroupCommandService(
                 configGroup.resourceGroupIdAttribute
                     ?.takeIf { it.isNotBlank() }
                     ?.let { attr ->
-                        additionalData[attr] = resourceGroup.id
+                        additionalData[attr] = resourceGroup.resourceId
                     }
             }
 
@@ -107,7 +107,7 @@ class EntraGroupCommandService(
                 log.info(
                     "Updated Entra group {} for ResourceGroupId {}",
                     groupId,
-                    resourceGroup.id,
+                    resourceGroup.resourceId,
                 )
 
                 EntraGroupCommandResult(
@@ -120,7 +120,7 @@ class EntraGroupCommandService(
                 log.error(
                     "Failed updating Entra group {} for ResourceGroupId {}. Error {}",
                     groupId,
-                    resourceGroup.id,
+                    resourceGroup.resourceId,
                     it.message,
                 )
 

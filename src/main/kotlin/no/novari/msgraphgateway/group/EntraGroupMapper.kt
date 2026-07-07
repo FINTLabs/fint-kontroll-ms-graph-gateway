@@ -11,9 +11,9 @@ class EntraGroupMapper(
 ) {
     fun expectedFromResourceGroup(resourceGroup: ResourceGroup): EntraGroup =
         EntraGroup(
-            objectId = resourceGroup.groupObjectId,
+            objectId = resourceGroup.idpGroupObjectId,
             displayName = buildDisplayName(resourceGroup),
-            resourceGroupID = resourceGroup.id.toLongOrNull(),
+            resourceGroupID = resourceGroup.resourceId.toLongOrNull(),
         )
 
     fun buildDisplayName(resourceGroup: ResourceGroup): String {
@@ -27,5 +27,5 @@ class EntraGroupMapper(
             .lowercase()
             .replace(Regex("[^a-z0-9]"), "-")
             .trim('-')
-            .ifBlank { "group-${resourceGroup.id}" }
+            .ifBlank { "group-${resourceGroup.resourceId}" }
 }

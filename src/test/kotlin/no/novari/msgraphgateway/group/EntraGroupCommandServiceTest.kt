@@ -96,9 +96,9 @@ class EntraGroupCommandServiceTest {
             service.createGroup(
                 ResourceGroup(
                     operation = ResourceGroupOperation.CREATE,
-                    id = "12345",
+                    resourceId = "12345",
                     resourceName = "TestGroup",
-                    groupObjectId = null,
+                    idpGroupObjectId = null,
                 ),
             )
 
@@ -140,9 +140,9 @@ class EntraGroupCommandServiceTest {
             service.updateGroup(
                 ResourceGroup(
                     operation = ResourceGroupOperation.UPDATE,
-                    id = "12345",
+                    resourceId = "12345",
                     resourceName = "UpdatedGroup",
-                    groupObjectId = groupId,
+                    idpGroupObjectId = groupId,
                 ),
             )
 
@@ -167,9 +167,9 @@ class EntraGroupCommandServiceTest {
             service.updateGroup(
                 ResourceGroup(
                     operation = ResourceGroupOperation.UPDATE,
-                    id = "12345",
+                    resourceId = "12345",
                     resourceName = "UpdatedGroup",
-                    groupObjectId = null,
+                    idpGroupObjectId = null,
                 ),
             )
 

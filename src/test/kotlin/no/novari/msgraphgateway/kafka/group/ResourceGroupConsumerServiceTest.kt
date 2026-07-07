@@ -44,7 +44,7 @@ class ResourceGroupConsumerServiceTest {
                 groupId = groupId,
                 message = "Created Entra group",
             )
-        every { entraGroupMapper.expectedFromResourceGroup(resourceGroup.copy(groupObjectId = groupId)) } returns
+        every { entraGroupMapper.expectedFromResourceGroup(resourceGroup.copy(idpGroupObjectId = groupId)) } returns
             EntraGroup(
                 objectId = groupId,
                 displayName = "TestGroup",
@@ -94,7 +94,7 @@ class ResourceGroupConsumerServiceTest {
                 groupId = newGroupId,
                 message = "Created Entra group",
             )
-        every { entraGroupMapper.expectedFromResourceGroup(resourceGroup.copy(groupObjectId = newGroupId)) } returns
+        every { entraGroupMapper.expectedFromResourceGroup(resourceGroup.copy(idpGroupObjectId = newGroupId)) } returns
             EntraGroup(
                 objectId = newGroupId,
                 displayName = "TestGroup",
@@ -134,7 +134,7 @@ class ResourceGroupConsumerServiceTest {
         val resourceGroup = createResourceGroup()
 
         every { entraGroupCommandService.findGroupIdByResourceGroupId("12345") } returns groupId
-        every { entraGroupMapper.expectedFromResourceGroup(resourceGroup.copy(groupObjectId = groupId)) } returns
+        every { entraGroupMapper.expectedFromResourceGroup(resourceGroup.copy(idpGroupObjectId = groupId)) } returns
             EntraGroup(
                 objectId = groupId,
                 displayName = "TestGroup",
@@ -229,7 +229,7 @@ class ResourceGroupConsumerServiceTest {
                 displayName = "UpdatedGroup",
                 resourceGroupID = 12345,
             )
-        every { entraGroupStateService.publish(any(), traceId, EntraStatus.FAILED) } returns true
+        every { entraGroupStateService.publish(any(), traceId, EntraStatus.ERROR) } returns true
 
         service.process(resourceGroup, traceId)
 
@@ -359,24 +359,24 @@ class ResourceGroupConsumerServiceTest {
     ): ResourceGroup =
         ResourceGroup(
             operation = ResourceGroupOperation.CREATE,
-            id = id,
+            resourceId = id,
             resourceName = resourceName,
-            groupObjectId = groupObjectId,
+            idpGroupObjectId = groupObjectId,
         )
 
     private fun deleteResourceGroup(): ResourceGroup =
         ResourceGroup(
             operation = ResourceGroupOperation.DELETE,
-            id = "12345",
+            resourceId = "12345",
             resourceName = null,
-            groupObjectId = null,
+            idpGroupObjectId = null,
         )
 
     private fun updateResourceGroup(groupObjectId: String): ResourceGroup =
         ResourceGroup(
             operation = ResourceGroupOperation.UPDATE,
-            id = "12345",
+            resourceId = "12345",
             resourceName = "UpdatedGroup",
-            groupObjectId = groupObjectId,
+            idpGroupObjectId = groupObjectId,
         )
 }

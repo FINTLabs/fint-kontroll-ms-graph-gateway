@@ -26,7 +26,7 @@ class ResourceGroupConsumerService(
             "Received resource-group command traceId={}, operation={}, id={}",
             resolvedTraceId,
             resourceGroup?.operation,
-            resourceGroup?.id,
+            resourceGroup?.resourceId,
         )
 
         if (resourceGroup == null) {
@@ -45,10 +45,10 @@ class ResourceGroupConsumerService(
         resourceGroup: ResourceGroup,
         traceId: String,
     ) {
-        if (resourceGroup.id.toLongOrNull() == null) {
+        if (resourceGroup.resourceId.toLongOrNull() == null) {
             log.warn(
                 "Cannot create Entra group; resourceGroup.id is required and must be numeric. resourceGroupId={}, traceId={}",
-                resourceGroup.id,
+                resourceGroup.resourceId,
                 traceId,
             )
             return
@@ -57,27 +57,27 @@ class ResourceGroupConsumerService(
         if (resourceGroup.resourceName.isNullOrBlank()) {
             log.warn(
                 "Cannot create Entra group for ResourceGroupId {}; resourceName is required. traceId={}",
-                resourceGroup.id,
+                resourceGroup.resourceId,
                 traceId,
             )
             return
         }
 
-        if (!resourceGroup.groupObjectId.isNullOrBlank()) {
+        if (!resourceGroup.idpGroupObjectId.isNullOrBlank()) {
             log.warn(
                 "Cannot create Entra group for ResourceGroupId {}; groupObjectId must be empty for CREATE. groupObjectId={}, traceId={}",
-                resourceGroup.id,
-                resourceGroup.groupObjectId,
+                resourceGroup.resourceId,
+                resourceGroup.idpGroupObjectId,
                 traceId,
             )
             return
         }
 
-        when (val existingGroup = findExistingGroupForCreate(resourceGroup.id, traceId)) {
+        when (val existingGroup = findExistingGroupForCreate(resourceGroup.resourceId, traceId)) {
             is ExistingGroupLookup.Found -> {
                 val storedAndPublished =
                     storeExpectedAndPublish(
-                        resourceGroup = resourceGroup.copy(groupObjectId = existingGroup.groupId),
+                        resourceGroup = resourceGroup.copy(idpGroupObjectId = existingGroup.groupId),
                         traceId = traceId,
                         forcePublish = true,
                         status = EntraStatus.CREATED,
@@ -86,14 +86,14 @@ class ResourceGroupConsumerService(
                 if (storedAndPublished) {
                     log.info(
                         "ResourceGroupId {} already existed as Entra group {}; local state was published. traceId={}",
-                        resourceGroup.id,
+                        resourceGroup.resourceId,
                         existingGroup.groupId,
                         traceId,
                     )
                 } else {
                     log.info(
                         "ResourceGroupId {} already exists as Entra group {}; skipping create. traceId={}",
-                        resourceGroup.id,
+                        resourceGroup.resourceId,
                         existingGroup.groupId,
                         traceId,
                     )
@@ -113,7 +113,7 @@ class ResourceGroupConsumerService(
         log.debug(
             "Creating Entra group {} for ResourceGroupId {}. traceId={}",
             resourceGroup.resourceName,
-            resourceGroup.id,
+            resourceGroup.resourceId,
             traceId,
         )
 
@@ -122,7 +122,7 @@ class ResourceGroupConsumerService(
         if (!result.success) {
             log.error(
                 "ResourceGroupId {} was not created in Entra: {}. traceId={}",
-                resourceGroup.id,
+                resourceGroup.resourceId,
                 result.message,
                 traceId,
                 result.error,
@@ -135,7 +135,7 @@ class ResourceGroupConsumerService(
         if (groupId.isNullOrBlank()) {
             log.error(
                 "ResourceGroupId {} was created in Entra, but Graph response did not contain group id. traceId={}",
-                resourceGroup.id,
+                resourceGroup.resourceId,
                 traceId,
             )
             return
@@ -143,7 +143,7 @@ class ResourceGroupConsumerService(
 
         val storedAndPublished =
             storeExpectedAndPublish(
-                resourceGroup = resourceGroup.copy(groupObjectId = groupId),
+                resourceGroup = resourceGroup.copy(idpGroupObjectId = groupId),
                 traceId = traceId,
                 forcePublish = true,
                 status = EntraStatus.CREATED,
@@ -152,7 +152,7 @@ class ResourceGroupConsumerService(
         if (!storedAndPublished) {
             log.warn(
                 "ResourceGroupId {} was created in Entra as {}, but local state was not published. traceId={}",
-                resourceGroup.id,
+                resourceGroup.resourceId,
                 groupId,
                 traceId,
             )
@@ -161,7 +161,7 @@ class ResourceGroupConsumerService(
 
         log.info(
             "ResourceGroupId {} was created in Entra as {}. traceId={}",
-            resourceGroup.id,
+            resourceGroup.resourceId,
             groupId,
             traceId,
         )
@@ -174,7 +174,7 @@ class ResourceGroupConsumerService(
         if (configGroup.allowGroupUpdate != true) {
             log.warn(
                 "ResourceGroupId {} was NOT updated because ms-graph.group.allow-group-update is not true. traceId={}",
-                resourceGroup.id,
+                resourceGroup.resourceId,
                 traceId,
             )
             return
@@ -183,18 +183,18 @@ class ResourceGroupConsumerService(
         if (resourceGroup.resourceName.isNullOrBlank()) {
             log.warn(
                 "Cannot update Entra group for ResourceGroupId {}; resourceName is required. traceId={}",
-                resourceGroup.id,
+                resourceGroup.resourceId,
                 traceId,
             )
             return
         }
 
-        val groupId = resourceGroup.groupObjectId
+        val groupId = resourceGroup.idpGroupObjectId
 
         if (groupId.isNullOrBlank()) {
             log.warn(
                 "Cannot update Entra group for ResourceGroupId {}; groupObjectId is required for UPDATE. traceId={}",
-                resourceGroup.id,
+                resourceGroup.resourceId,
                 traceId,
             )
             return
@@ -203,7 +203,7 @@ class ResourceGroupConsumerService(
         log.info(
             "Updating Entra group {} for ResourceGroupId {}. traceId={}",
             groupId,
-            resourceGroup.id,
+            resourceGroup.resourceId,
             traceId,
         )
 
@@ -212,7 +212,7 @@ class ResourceGroupConsumerService(
         if (!result.success) {
             log.error(
                 "ResourceGroupId {} was not updated in Entra: {}. traceId={}",
-                resourceGroup.id,
+                resourceGroup.resourceId,
                 result.message,
                 traceId,
             )
@@ -227,7 +227,7 @@ class ResourceGroupConsumerService(
             if (!publishedFailed) {
                 log.warn(
                     "ResourceGroupId {} was not updated in Entra, and FAILED status was not published. traceId={}",
-                    resourceGroup.id,
+                    resourceGroup.resourceId,
                     traceId,
                 )
             }
@@ -245,7 +245,7 @@ class ResourceGroupConsumerService(
         if (!storedAndPublished) {
             log.warn(
                 "ResourceGroupId {} was updated in Entra group {}, but local state was not published. traceId={}",
-                resourceGroup.id,
+                resourceGroup.resourceId,
                 groupId,
                 traceId,
             )
@@ -254,7 +254,7 @@ class ResourceGroupConsumerService(
 
         log.info(
             "ResourceGroupId {} was updated in Entra group {} and local state was published. traceId={}",
-            resourceGroup.id,
+            resourceGroup.resourceId,
             groupId,
             traceId,
         )
@@ -267,22 +267,22 @@ class ResourceGroupConsumerService(
         if (configGroup.allowGroupDelete != true) {
             log.warn(
                 "ResourceGroupId {} was NOT deleted because ms-graph.group.allow-group-delete is not true. traceId={}",
-                resourceGroup.id,
+                resourceGroup.resourceId,
                 traceId,
             )
             return
         }
 
         val groupId =
-            resourceGroup.groupObjectId
-                ?: when (val lookup = findGroupForDelete(resourceGroup.id, traceId)) {
+            resourceGroup.idpGroupObjectId
+                ?: when (val lookup = findGroupForDelete(resourceGroup.resourceId, traceId)) {
                     is DeleteGroupLookup.Found -> {
                         lookup.groupId
                     }
 
                     is DeleteGroupLookup.AlreadyDeleted -> {
                         deleteLocalStateForAlreadyDeletedGroup(
-                            resourceGroupId = resourceGroup.id,
+                            resourceGroupId = resourceGroup.resourceId,
                             groupId = lookup.localGroupId,
                             traceId = traceId,
                         )
@@ -297,13 +297,13 @@ class ResourceGroupConsumerService(
         val result =
             entraGroupCommandService.deleteGroupById(
                 groupId = groupId,
-                resourceGroupId = resourceGroup.id,
+                resourceGroupId = resourceGroup.resourceId,
             )
 
         if (!result.success) {
             log.error(
                 "ResourceGroupId {} was not deleted from Entra: {}. groupId={}, traceId={}",
-                resourceGroup.id,
+                resourceGroup.resourceId,
                 result.message,
                 groupId,
                 traceId,
@@ -315,7 +315,7 @@ class ResourceGroupConsumerService(
         val deletedAndPublished =
             entraGroupStateService.deleteAndPublish(
                 objectId = groupId,
-                resourceGroupId = resourceGroup.id.toLongOrNull(),
+                resourceGroupId = resourceGroup.resourceId.toLongOrNull(),
                 traceId = traceId,
             )
 
@@ -323,7 +323,7 @@ class ResourceGroupConsumerService(
             log.warn(
                 "Entra group {} was deleted, but local state deletion/publish failed. ResourceGroupId={}, traceId={}",
                 groupId,
-                resourceGroup.id,
+                resourceGroup.resourceId,
                 traceId,
             )
             return
@@ -331,7 +331,7 @@ class ResourceGroupConsumerService(
 
         log.info(
             "ResourceGroupId {} was deleted from Entra group {}. traceId={}",
-            resourceGroup.id,
+            resourceGroup.resourceId,
             groupId,
             traceId,
         )
@@ -519,7 +519,7 @@ class ResourceGroupConsumerService(
         if (expectedEntraGroup.objectId.isNullOrBlank()) {
             log.warn(
                 "Cannot store expected Entra group for ResourceGroupId {}; missing objectId. traceId={}",
-                resourceGroup.id,
+                resourceGroup.resourceId,
                 traceId,
             )
             return false
@@ -529,7 +529,7 @@ class ResourceGroupConsumerService(
             log.warn(
                 "Cannot store expected Entra group {}; invalid resourceGroupId {}. traceId={}",
                 expectedEntraGroup.objectId,
-                resourceGroup.id,
+                resourceGroup.resourceId,
                 traceId,
             )
             return false
@@ -552,7 +552,7 @@ class ResourceGroupConsumerService(
         if (expectedEntraGroup.objectId.isNullOrBlank()) {
             log.warn(
                 "Cannot publish expected Entra group for ResourceGroupId {}; missing objectId. traceId={}",
-                resourceGroup.id,
+                resourceGroup.resourceId,
                 traceId,
             )
             return false
@@ -562,7 +562,7 @@ class ResourceGroupConsumerService(
             log.warn(
                 "Cannot publish expected Entra group {}; invalid resourceGroupId {}. traceId={}",
                 expectedEntraGroup.objectId,
-                resourceGroup.id,
+                resourceGroup.resourceId,
                 traceId,
             )
             return false
