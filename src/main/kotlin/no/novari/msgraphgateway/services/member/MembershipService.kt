@@ -246,13 +246,23 @@ class MembershipService(
 
     private fun buildAddRequest(membership: DeviceResourceGroupMembership): RequestInformation {
         val referenceMember = ReferenceCreate()
-        referenceMember.odataId = properties.directoryObjectsBaseUrl + membership.entraDeviceRef
+        referenceMember.odataId = directoryObjectOdataId(membership.entraDeviceRef)
         return graphServiceClient
             .groups()
             .byGroupId(membership.entraGroupRef)
             .members()
             .ref()
             .toPostRequestInformation(referenceMember)
+    }
+
+    private fun directoryObjectOdataId(deviceObjectId: String): String {
+        val graphBaseUrl = graphServiceClient.requestAdapter.baseUrl.trimEnd('/')
+
+        require(graphBaseUrl.isNotBlank()) {
+            "Graph request adapter base URL is required"
+        }
+
+        return "$graphBaseUrl/directoryObjects/$deviceObjectId"
     }
 
     private fun buildRemoveRequest(membership: DeviceResourceGroupMembership): RequestInformation =

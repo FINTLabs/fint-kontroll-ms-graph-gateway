@@ -40,7 +40,6 @@ class MembershipConsumerTest {
             graphMaxConcurrentCalls = 3,
             graphBatchSize = 20,
             resultTopicPartitions = 1,
-            directoryObjectsBaseUrl = "https://graph.microsoft.com/v1.0/directoryObjects/",
         )
 
     @Test

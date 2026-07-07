@@ -18,5 +18,4 @@ data class DeviceMembershipProcessingProperties(
     var graphBatchSize: Int,
     @field:Min(1)
     var resultTopicPartitions: Int,
-    var directoryObjectsBaseUrl: String,
 )

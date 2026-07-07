@@ -3,6 +3,7 @@ package no.novari.msgraphgateway.membership.device
 import com.microsoft.graph.core.content.BatchRequestContent
 import com.microsoft.graph.core.content.BatchResponseContent
 import com.microsoft.graph.core.requests.BatchRequestBuilder
+import com.microsoft.graph.models.ReferenceCreate
 import com.microsoft.graph.serviceclient.GraphServiceClient
 import com.microsoft.kiota.HttpMethod
 import com.microsoft.kiota.RequestAdapter
@@ -152,6 +153,40 @@ class MembershipServiceTest {
     }
 
     @Test
+    fun processKontrollMembershipBatchBuildsAddReferenceFromGraphClientBaseUrl() {
+        val deviceRef = UUID.randomUUID()
+        val groupRef = UUID.randomUUID()
+        val referenceCreateSlot = slot<ReferenceCreate>()
+        val membership =
+            DeviceResourceGroupMembership(
+                operation = OperationType.ADD,
+                entraGroupRef = groupRef.toString(),
+                entraDeviceRef = deviceRef.toString(),
+            )
+
+        every {
+            graphServiceClient
+                .groups()
+                .byGroupId(any())
+                .members()
+                .ref()
+                .toPostRequestInformation(capture(referenceCreateSlot))
+        } returns
+            RequestInformation().apply {
+                httpMethod = HttpMethod.POST
+                urlTemplate = "https://graph.microsoft.com/v1.0/groups/group/members/\$ref"
+            }
+        everyGraphBatchResponse(204, null)
+
+        service.processKontrollMembershipBatch(listOf(record("graph-status", membership)))
+
+        assertEquals(
+            "https://graph.microsoft.com/v1.0/directoryObjects/$deviceRef",
+            referenceCreateSlot.captured.odataId,
+        )
+    }
+
+    @Test
     fun deleteAllMembershipsDeletesAllRows() {
         every { deviceMembershipEntityRepository.deleteAll() } returns 11
 
@@ -184,6 +219,7 @@ class MembershipServiceTest {
         every { deviceMembershipEntityRepository.saveAll(any()) } returns Unit
         every { graphServiceClient.requestAdapter } returns requestAdapter
         every { graphServiceClient.batchRequestBuilder } returns batchRequestBuilder
+        every { requestAdapter.baseUrl } returns "https://graph.microsoft.com/v1.0/"
         every { requestAdapter.convertToNativeRequest<Request>(any()) } returns
             Request
                 .Builder()
@@ -227,7 +263,6 @@ class MembershipServiceTest {
                         graphMaxConcurrentCalls = 3,
                         graphBatchSize = 20,
                         resultTopicPartitions = 1,
-                        directoryObjectsBaseUrl = "testUrl",
                     ),
             )
     }
