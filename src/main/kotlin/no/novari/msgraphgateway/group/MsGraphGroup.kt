@@ -63,7 +63,10 @@ class MsGraphGroup(
     )
     fun pullAllGroupsDelta() {
         if (fullImportRequested.get()) {
-            log.info("Full group import pending; skipping delta run")
+            log.info("Full group import pending; trying to start it instead of delta run")
+            scope.launch {
+                tryStartFullImportIfRequested()
+            }
             return
         }
 
@@ -183,7 +186,10 @@ class MsGraphGroup(
 
     private suspend fun tryStartFullImportIfRequested() {
         if (!fullImportRequested.get()) return
-        if (!runMutex.tryLock()) return
+        if (!runMutex.tryLock()) {
+            log.info("Full group import pending, but group sync is still running")
+            return
+        }
 
         val startTime = System.currentTimeMillis()
         val republishRequested = republishAllRequested.getAndSet(false)

@@ -6,6 +6,7 @@ import com.microsoft.graph.models.GroupCollectionResponse
 import com.microsoft.graph.models.User
 import com.microsoft.graph.serviceclient.GraphServiceClient
 import io.mockk.*
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import no.novari.msgraphgateway.config.ConfigGroup
 import no.novari.msgraphgateway.config.ConfigUser
@@ -14,6 +15,7 @@ import no.novari.msgraphgateway.services.group.EntraGroupSyncService
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import java.time.Instant
+import java.util.concurrent.atomic.AtomicBoolean
 
 class MsGraphGroupTest {
     private val configGroup = mockk<ConfigGroup>()
@@ -221,6 +223,34 @@ class MsGraphGroupTest {
             assertEquals(markNotSeenCutoffSlot.captured, cutoffSlot.captured)
         }
 
+    @Test
+    fun `pullAllGroupsDelta starts pending full import when no sync is running`() =
+        runBlocking {
+            val service =
+                spyk(
+                    MsGraphGroup(
+                        configGroup = configGroup,
+                        graphServiceClient = graphServiceClient,
+                        groupSyncService = groupSyncService,
+                        deltaLinkStore = deltaLinkStore,
+                        configUser = configUser,
+                    ),
+                )
+
+            coEvery { service.startFullImport(any()) } returns Unit
+            fullImportRequested(service).set(true)
+
+            service.pullAllGroupsDelta()
+
+            coVerify(timeout = 2_000, exactly = 1) {
+                service.startFullImport(false)
+            }
+            verify(exactly = 0) {
+                graphServiceClient.groups().delta().get(any())
+            }
+            assertFalse(fullImportRequested(service).get())
+        }
+
     private fun wantedGroup(
         id: String,
         displayName: String,
@@ -232,4 +262,10 @@ class MsGraphGroupTest {
             securityEnabled = true
             additionalData["extension_resourceGroupId"] = resourceGroupId
         }
+
+    private fun fullImportRequested(service: MsGraphGroup): AtomicBoolean {
+        val field = service.javaClass.getDeclaredField("fullImportRequested")
+        field.isAccessible = true
+        return field.get(service) as AtomicBoolean
+    }
 }
