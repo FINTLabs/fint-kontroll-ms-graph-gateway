@@ -210,6 +210,48 @@ class ResourceGroupConsumerServiceTest {
     }
 
     @Test
+    fun `process publishes failed status when update fails in Entra`() {
+        val traceId = "trace-UPDATE-FAILED-123"
+        val groupId = "11111111-1111-1111-1111-111111111111"
+        val resourceGroup = updateResourceGroup(groupObjectId = groupId)
+
+        every { configGroup.allowGroupUpdate } returns true
+        every { entraGroupCommandService.updateGroup(resourceGroup) } returns
+            EntraGroupCommandService.EntraGroupCommandResult(
+                success = false,
+                groupId = groupId,
+                message = "Failed updating Entra group",
+                error = RuntimeException("Graph error"),
+            )
+        every { entraGroupMapper.expectedFromResourceGroup(resourceGroup) } returns
+            EntraGroup(
+                objectId = groupId,
+                displayName = "UpdatedGroup",
+                resourceGroupID = 12345,
+            )
+        every { entraGroupStateService.publish(any(), traceId, EntraStatus.FAILED) } returns true
+
+        service.process(resourceGroup, traceId)
+
+        verify(exactly = 1) {
+            entraGroupCommandService.updateGroup(resourceGroup)
+            entraGroupStateService.publish(
+                match {
+                    it.objectId == groupId &&
+                        it.resourceGroupID == 12345L
+                },
+                traceId,
+                EntraStatus.ERROR,
+            )
+        }
+
+        verify(exactly = 0) {
+            entraGroupStateService.storeAndPublish(any(), any(), any())
+            entraGroupStateService.storeAndPublishIfChanged(any(), any(), any())
+        }
+    }
+
+    @Test
     fun `process does not call graph when create is missing resourceName`() {
         val resourceGroup = createResourceGroup(resourceName = null)
 

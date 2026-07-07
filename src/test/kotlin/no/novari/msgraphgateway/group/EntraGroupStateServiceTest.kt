@@ -254,7 +254,7 @@ class EntraGroupStateServiceTest {
                 },
             )
         } just Runs
-        every { groupProducerService.publish(any()) } just Runs
+        every { groupProducerService.publish(any(), EntraStatus.CREATED) } just Runs
 
         val result = service.storeAndPublish(entraGroup)
 
@@ -277,7 +277,44 @@ class EntraGroupStateServiceTest {
                         it.traceId == null &&
                         it.status == EntraStatus.CREATED
                 },
+                EntraStatus.CREATED,
             )
+        }
+    }
+
+    @Test
+    fun `publish publishes without storing local state`() {
+        val objectId = UUID.randomUUID()
+        val entraGroup =
+            EntraGroup(
+                objectId = objectId.toString(),
+                displayName = "TestGroup",
+                resourceGroupID = 12345,
+            )
+
+        every { groupProducerService.publish(any(), EntraStatus.FAILED) } just Runs
+
+        val result = service.publish(entraGroup, "trace-123", EntraStatus.FAILED)
+
+        assertTrue(result)
+
+        verify(exactly = 1) {
+            groupProducerService.publish(
+                match {
+                    it.objectId == entraGroup.objectId &&
+                        it.displayName == entraGroup.displayName &&
+                        it.resourceGroupID == entraGroup.resourceGroupID &&
+                        it.traceId == "trace-123" &&
+                        it.status == EntraStatus.FAILED
+                },
+                EntraStatus.FAILED,
+            )
+        }
+
+        verify(exactly = 0) {
+            groupRepository.batchUpsert(any())
+            groupRepository.batchUpsertReturningChanged(any())
+            checksumService.checksum(any())
         }
     }
 

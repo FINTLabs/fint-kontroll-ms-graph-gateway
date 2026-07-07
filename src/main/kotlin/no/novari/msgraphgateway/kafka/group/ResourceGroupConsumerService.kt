@@ -215,8 +215,22 @@ class ResourceGroupConsumerService(
                 resourceGroup.id,
                 result.message,
                 traceId,
-                result.message,
             )
+
+            val publishedFailed =
+                publishExpected(
+                    resourceGroup = resourceGroup,
+                    traceId = traceId,
+                    status = EntraStatus.ERROR,
+                )
+
+            if (!publishedFailed) {
+                log.warn(
+                    "ResourceGroupId {} was not updated in Entra, and FAILED status was not published. traceId={}",
+                    resourceGroup.id,
+                    traceId,
+                )
+            }
             return
         }
 
@@ -526,6 +540,35 @@ class ResourceGroupConsumerService(
         } else {
             entraGroupStateService.storeAndPublishIfChanged(expectedEntraGroup, traceId, status)
         }
+    }
+
+    private fun publishExpected(
+        resourceGroup: ResourceGroup,
+        traceId: String,
+        status: EntraStatus,
+    ): Boolean {
+        val expectedEntraGroup = entraGroupMapper.expectedFromResourceGroup(resourceGroup)
+
+        if (expectedEntraGroup.objectId.isNullOrBlank()) {
+            log.warn(
+                "Cannot publish expected Entra group for ResourceGroupId {}; missing objectId. traceId={}",
+                resourceGroup.id,
+                traceId,
+            )
+            return false
+        }
+
+        if (expectedEntraGroup.resourceGroupID == null) {
+            log.warn(
+                "Cannot publish expected Entra group {}; invalid resourceGroupId {}. traceId={}",
+                expectedEntraGroup.objectId,
+                resourceGroup.id,
+                traceId,
+            )
+            return false
+        }
+
+        return entraGroupStateService.publish(expectedEntraGroup, traceId, status)
     }
 
     private sealed interface ExistingGroupLookup {

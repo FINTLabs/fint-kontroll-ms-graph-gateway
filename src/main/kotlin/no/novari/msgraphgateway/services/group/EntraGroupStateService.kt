@@ -77,6 +77,41 @@ class EntraGroupStateService(
         return true
     }
 
+    fun publish(
+        entraGroup: EntraGroup,
+        traceId: String? = null,
+        status: EntraStatus = entraGroup.status ?: EntraStatus.CREATED,
+    ): Boolean {
+        val objectId =
+            parseObjectIdOrNull(entraGroup.objectId)
+                ?: run {
+                    log.warn("Cannot publish Entra group with invalid objectId {}", entraGroup.objectId)
+                    return false
+                }
+
+        if (entraGroup.resourceGroupID == null) {
+            log.warn("Cannot publish Entra group {} without resourceGroupId", objectId)
+            return false
+        }
+
+        val groupToPublish =
+            entraGroup.copy(
+                traceId = traceId.takeUnless { it.isNullOrBlank() } ?: entraGroup.traceId,
+                status = status,
+            )
+
+        groupProducerService.publish(groupToPublish)
+
+        log.debug(
+            "Published Entra group {} for ResourceGroupId {} with traceId {} and status {}",
+            objectId,
+            entraGroup.resourceGroupID,
+            groupToPublish.traceId,
+            status,
+        )
+        return true
+    }
+
     fun deleteAndPublish(
         objectId: String,
         resourceGroupId: Long? = null,
