@@ -20,7 +20,7 @@ class ResourceGroupConsumer(
     private val parameterizedListenerContainerFactoryService: ParameterizedListenerContainerFactoryService,
     private val errorHandlerFactory: ErrorHandlerFactory,
     private val resourceGroupConsumerService: ResourceGroupConsumerService,
-    private val eventTopicService: EventTopicService,
+    eventTopicService: EventTopicService,
 ) {
     private fun listenerConfiguration() =
         ListenerConfiguration

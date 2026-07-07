@@ -23,7 +23,7 @@ class MembershipConsumer(
     private val errorHandlerFactory: ErrorHandlerFactory,
     private val membershipService: MembershipService,
     private val properties: DeviceMembershipProcessingProperties,
-    private val eventTopicService: EventTopicService,
+    eventTopicService: EventTopicService,
 ) {
     private fun listenerConfiguration() =
         ListenerConfiguration
