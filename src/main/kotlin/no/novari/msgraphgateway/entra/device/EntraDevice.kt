@@ -1,9 +1,6 @@
-@file:Suppress("ktlint:standard:no-wildcard-imports")
-
 package no.novari.msgraphgateway.entra.device
 
 import com.microsoft.graph.models.Device
-import no.novari.msgraphgateway.config.ConfigDevice
 
 data class EntraDevice(
     val objectId: String?,
@@ -19,7 +16,7 @@ data class EntraDevice(
     val approximateLastSignInDateTime: String?,
     val registrationDateTime: String?,
 ) {
-    constructor(device: Device, configDevice: ConfigDevice) : this(
+    constructor(device: Device) : this(
         objectId = device.id,
         deviceId = device.deviceId,
         displayName = device.displayName,
@@ -33,4 +30,22 @@ data class EntraDevice(
         approximateLastSignInDateTime = device.approximateLastSignInDateTime?.toString(),
         registrationDateTime = device.registrationDateTime?.toString(),
     )
+
+    companion object {
+        val DEFAULT_DEVICE_ATTRIBUTES =
+            listOf(
+                "id",
+                "deviceId",
+                "displayName",
+                "accountEnabled",
+                "operatingSystem",
+                "operatingSystemVersion",
+                "trustType",
+                "profileType",
+                "isCompliant",
+                "isManaged",
+                "approximateLastSignInDateTime",
+                "registrationDateTime",
+            )
+    }
 }
