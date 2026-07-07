@@ -3,28 +3,30 @@ package no.novari.msgraphgateway.kafka.group
 import no.novari.kafka.producing.ParameterizedProducerRecord
 import no.novari.kafka.producing.ParameterizedTemplate
 import no.novari.kafka.producing.ParameterizedTemplateFactory
-import no.novari.kafka.topic.EntityTopicService
-import no.novari.kafka.topic.configuration.EntityCleanupFrequency
-import no.novari.kafka.topic.configuration.EntityTopicConfiguration
-import no.novari.kafka.topic.name.EntityTopicNameParameters
+import no.novari.kafka.topic.EventTopicService
+import no.novari.kafka.topic.configuration.EventCleanupFrequency
+import no.novari.kafka.topic.configuration.EventTopicConfiguration
+import no.novari.kafka.topic.name.EventTopicNameParameters
 import no.novari.kafka.topic.name.TopicNamePrefixParameters
 import no.novari.msgraphgateway.entra.EntraStatus
 import no.novari.msgraphgateway.entra.group.EntraGroup
 import no.novari.msgraphgateway.entra.group.EntraGroupPayload
 import org.slf4j.LoggerFactory
-import org.springframework.stereotype.Service
+import org.springframework.boot.context.event.ApplicationReadyEvent
+import org.springframework.context.event.EventListener
+import org.springframework.stereotype.Component
 import java.time.Duration
 
-@Service
+@Component
 class GroupProducerService(
     private val parameterizedTemplateFactory: ParameterizedTemplateFactory,
-    entityTopicService: EntityTopicService,
+    private val eventTopicService: EventTopicService,
 ) {
     private val entraGroupTemplate: ParameterizedTemplate<EntraGroupPayload> by lazy {
         parameterizedTemplateFactory.createTemplate(EntraGroupPayload::class.java)
     }
 
-    private val entityTopicNameParameters: EntityTopicNameParameters
+    private val nameParameters: EventTopicNameParameters
 
     init {
         val topicNamePrefixParameters =
@@ -34,21 +36,23 @@ class GroupProducerService(
                 .domainContextApplicationDefault()
                 .build()
 
-        entityTopicNameParameters =
-            EntityTopicNameParameters
+        nameParameters =
+            EventTopicNameParameters
                 .builder()
                 .topicNamePrefixParameters(topicNamePrefixParameters)
-                .resourceName("graph-group")
+                .eventName("graph-group")
                 .build()
+    }
 
-        entityTopicService.createOrModifyTopic(
-            entityTopicNameParameters,
-            EntityTopicConfiguration
+    @EventListener(ApplicationReadyEvent::class)
+    fun initializeTopicOnStartup() {
+        eventTopicService.createOrModifyTopic(
+            nameParameters,
+            EventTopicConfiguration
                 .stepBuilder()
                 .partitions(1)
-                .lastValueRetentionTime(Duration.ofDays(30))
-                .nullValueRetentionTime(Duration.ofDays(7))
-                .cleanupFrequency(EntityCleanupFrequency.NORMAL)
+                .retentionTime(Duration.ofDays(7))
+                .cleanupFrequency(EventCleanupFrequency.NORMAL)
                 .build(),
         )
     }
@@ -68,7 +72,7 @@ class GroupProducerService(
         entraGroupTemplate.send(
             ParameterizedProducerRecord
                 .builder<EntraGroupPayload>()
-                .topicNameParameters(entityTopicNameParameters)
+                .topicNameParameters(nameParameters)
                 .key(entraGroup.objectId.toString())
                 .value(entraGroup.toPayload(status))
                 .build(),
@@ -99,7 +103,7 @@ class GroupProducerService(
         entraGroupTemplate.send(
             ParameterizedProducerRecord
                 .builder<EntraGroupPayload>()
-                .topicNameParameters(entityTopicNameParameters)
+                .topicNameParameters(nameParameters)
                 .key(groupId)
                 .value(payload)
                 .build(),
