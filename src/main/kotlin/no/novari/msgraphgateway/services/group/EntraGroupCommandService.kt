@@ -2,6 +2,7 @@ package no.novari.msgraphgateway.services.group
 
 import com.microsoft.graph.models.Group
 import com.microsoft.graph.serviceclient.GraphServiceClient
+import com.microsoft.kiota.ApiException
 import no.novari.msgraphgateway.config.ConfigGroup
 import no.novari.msgraphgateway.group.EntraGroupMapper
 import no.novari.msgraphgateway.kafka.group.ResourceGroup
@@ -222,6 +223,120 @@ class EntraGroupCommandService(
                 )
             },
         )
+
+    fun verifyGroupByIdAndResourceGroupId(
+        groupId: String?,
+        resourceGroupId: String?,
+    ): EntraGroupCommandResult {
+        if (groupId.isNullOrBlank()) {
+            log.warn("Cannot verify group for delete; missing identityProviderGroupObjectId")
+
+            return EntraGroupCommandResult(
+                success = false,
+                message = "Missing identityProviderGroupObjectId",
+            )
+        }
+
+        if (resourceGroupId.isNullOrBlank()) {
+            log.warn("Cannot verify group {}; missing resourceGroupId", groupId)
+
+            return EntraGroupCommandResult(
+                success = false,
+                groupId = groupId,
+                message = "Missing resourceGroupId",
+            )
+        }
+
+        val attr =
+            configGroup.resourceGroupIdAttribute
+                ?.takeIf { it.isNotBlank() }
+                ?: run {
+                    log.warn("Cannot verify group {}; missing resourceGroupIdAttribute configuration", groupId)
+
+                    return EntraGroupCommandResult(
+                        success = false,
+                        groupId = groupId,
+                        message = "Missing resourceGroupIdAttribute configuration",
+                    )
+                }
+
+        return runCatching {
+            graphServiceClient
+                .groups()
+                .byGroupId(groupId)
+                .get { req ->
+                    req.queryParameters?.select = arrayOf("id", "displayName", attr)
+                }
+        }.fold(
+            onSuccess = { group ->
+                if (group == null) {
+                    log.info("Could not find Entra group {} while verifying delete", groupId)
+
+                    return EntraGroupCommandResult(
+                        success = false,
+                        groupId = groupId,
+                        message = "No matching Entra group found",
+                    )
+                }
+
+                val actualGroupId = group.id
+                val actualResourceGroupId = group.additionalData[attr]?.toString()
+
+                if (actualGroupId == groupId && actualResourceGroupId == resourceGroupId) {
+                    log.debug(
+                        "Verified Entra group {} for ResourceGroupId {}",
+                        groupId,
+                        resourceGroupId,
+                    )
+
+                    EntraGroupCommandResult(
+                        success = true,
+                        groupId = groupId,
+                        message = "Verified Entra group",
+                    )
+                } else {
+                    log.warn(
+                        "Entra group {} did not match delete request. actualObjectId={}, expectedResourceGroupId={}, actualResourceGroupId={}",
+                        groupId,
+                        actualGroupId,
+                        resourceGroupId,
+                        actualResourceGroupId,
+                    )
+
+                    EntraGroupCommandResult(
+                        success = false,
+                        groupId = groupId,
+                        message = "Entra group did not match resourceGroupId",
+                    )
+                }
+            },
+            onFailure = {
+                if (it is ApiException && it.responseStatusCode == 404) {
+                    log.info("Could not find Entra group {} while verifying delete", groupId)
+
+                    EntraGroupCommandResult(
+                        success = false,
+                        groupId = groupId,
+                        message = "No matching Entra group found",
+                    )
+                } else {
+                    log.error(
+                        "Failed verifying Entra group {} for ResourceGroupId {}; skipping delete",
+                        groupId,
+                        resourceGroupId,
+                        it,
+                    )
+
+                    EntraGroupCommandResult(
+                        success = false,
+                        groupId = groupId,
+                        message = "Failed verifying Entra group",
+                        error = it,
+                    )
+                }
+            },
+        )
+    }
 
     fun findGroupIdByResourceGroupId(resourceGroupId: String?): String? {
         if (resourceGroupId.isNullOrBlank()) return null

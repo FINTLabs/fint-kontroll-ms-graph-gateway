@@ -233,6 +233,62 @@ class EntraGroupCommandServiceTest {
     }
 
     @Test
+    fun `verifyGroupByIdAndResourceGroupId returns success when group id and resource group id match`() {
+        val groupItemRequestBuilder = mockk<GroupItemRequestBuilder>()
+
+        every { groupsRequestBuilder.byGroupId("group-1") } returns groupItemRequestBuilder
+        every { groupItemRequestBuilder.get(any()) } returns
+            group(
+                id = "group-1",
+                displayName = "Test group",
+                resourceGroupId = "12345",
+            )
+
+        val result = service.verifyGroupByIdAndResourceGroupId("group-1", "12345")
+
+        assertEquals(true, result.success)
+        assertEquals("group-1", result.groupId)
+        assertEquals("Verified Entra group", result.message)
+
+        verify(exactly = 1) {
+            groupsRequestBuilder.byGroupId("group-1")
+            groupItemRequestBuilder.get(any())
+        }
+    }
+
+    @Test
+    fun `verifyGroupByIdAndResourceGroupId returns false when resource group id does not match`() {
+        val groupItemRequestBuilder = mockk<GroupItemRequestBuilder>()
+
+        every { groupsRequestBuilder.byGroupId("group-1") } returns groupItemRequestBuilder
+        every { groupItemRequestBuilder.get(any()) } returns
+            group(
+                id = "group-1",
+                displayName = "Test group",
+                resourceGroupId = "67890",
+            )
+
+        val result = service.verifyGroupByIdAndResourceGroupId("group-1", "12345")
+
+        assertFalse(result.success)
+        assertEquals("group-1", result.groupId)
+        assertEquals("Entra group did not match resourceGroupId", result.message)
+    }
+
+    @Test
+    fun `verifyGroupByIdAndResourceGroupId returns false when group id is missing`() {
+        val result = service.verifyGroupByIdAndResourceGroupId(null, "12345")
+
+        assertFalse(result.success)
+        assertNull(result.groupId)
+        assertEquals("Missing identityProviderGroupObjectId", result.message)
+
+        verify(exactly = 0) {
+            groupsRequestBuilder.byGroupId(any())
+        }
+    }
+
+    @Test
     fun `findGroupIdByResourceGroupId returns null when no groups are found`() {
         mockGroupsResponse(emptyList())
 
@@ -293,10 +349,14 @@ class EntraGroupCommandServiceTest {
     private fun group(
         id: String,
         displayName: String,
+        resourceGroupId: String? = null,
     ): Group =
         Group().apply {
             this.id = id
             this.displayName = displayName
+            resourceGroupId?.let {
+                this.additionalData["extension_resourceGroupId"] = it
+            }
         }
 
     @Test
