@@ -26,6 +26,9 @@ patches:
         path: "/spec/kafka/acls/3/topic"
         value: "nfk-no.kontroll.event.graph-*"
       - op: replace
+        path: "/spec/kafka/acls/4/topic"
+        value: "nfk-no.kontroll.event.entra-*"
+      - op: replace
         path: "/spec/env/0"
         value:
             name: "JAVA_TOOL_OPTIONS"

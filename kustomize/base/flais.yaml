@@ -40,7 +40,8 @@ spec:
         permission: admin
       - topic: 'fintlabs-no.kontroll.event.graph-*'
         permission: admin
-
+      - topic: 'fintlabs-no.kontroll.event.entra-*'
+        permission: read
 
   observability:
       metrics:
