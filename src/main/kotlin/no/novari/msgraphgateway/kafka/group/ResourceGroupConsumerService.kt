@@ -15,6 +15,7 @@ class ResourceGroupConsumerService(
     private val entraGroupMapper: EntraGroupMapper,
     private val entraGroupStateService: EntraGroupStateService,
     private val entraGroupCommandService: EntraGroupCommandService,
+    private val groupProducerService: GroupProducerService,
 ) {
     fun process(
         resourceGroup: ResourceGroup?,
@@ -31,13 +32,25 @@ class ResourceGroupConsumerService(
 
         if (resourceGroup == null) {
             log.warn("ResourceGroup payload was null. traceId={}", resolvedTraceId)
+            publishResourceGroupResponse(null, resolvedTraceId, EntraStatus.FAILED)
             return
         }
 
-        when (resourceGroup.operation) {
-            ResourceGroupOperation.CREATE -> createAndStore(resourceGroup, resolvedTraceId)
-            ResourceGroupOperation.UPDATE -> updateAndStore(resourceGroup, resolvedTraceId)
-            ResourceGroupOperation.DELETE -> deleteAndPublish(resourceGroup, resolvedTraceId)
+        try {
+            when (resourceGroup.operation) {
+                ResourceGroupOperation.CREATE -> createAndStore(resourceGroup, resolvedTraceId)
+                ResourceGroupOperation.UPDATE -> updateAndStore(resourceGroup, resolvedTraceId)
+                ResourceGroupOperation.DELETE -> deleteAndPublish(resourceGroup, resolvedTraceId)
+            }
+        } catch (e: Exception) {
+            log.error(
+                "Failed processing resource-group command. traceId={}, operation={}, resourceGroupId={}",
+                resolvedTraceId,
+                resourceGroup.operation,
+                resourceGroup.resourceId,
+                e,
+            )
+            publishResourceGroupResponse(resourceGroup, resolvedTraceId, EntraStatus.ERROR)
         }
     }
 
@@ -51,6 +64,7 @@ class ResourceGroupConsumerService(
                 resourceGroup.resourceId,
                 traceId,
             )
+            publishResourceGroupResponse(resourceGroup, traceId, EntraStatus.FAILED)
             return
         }
 
@@ -60,6 +74,7 @@ class ResourceGroupConsumerService(
                 resourceGroup.resourceId,
                 traceId,
             )
+            publishResourceGroupResponse(resourceGroup, traceId, EntraStatus.FAILED)
             return
         }
 
@@ -70,6 +85,7 @@ class ResourceGroupConsumerService(
                 resourceGroup.idpGroupObjectId,
                 traceId,
             )
+            publishResourceGroupResponse(resourceGroup, traceId, EntraStatus.FAILED)
             return
         }
 
@@ -97,11 +113,17 @@ class ResourceGroupConsumerService(
                         existingGroup.groupId,
                         traceId,
                     )
+                    publishResourceGroupResponse(
+                        resourceGroup = resourceGroup.copy(idpGroupObjectId = existingGroup.groupId),
+                        traceId = traceId,
+                        status = EntraStatus.CREATED,
+                    )
                 }
                 return
             }
 
             ExistingGroupLookup.LookupFailed -> {
+                publishResourceGroupResponse(resourceGroup, traceId, EntraStatus.FAILED)
                 return
             }
 
@@ -127,6 +149,7 @@ class ResourceGroupConsumerService(
                 traceId,
                 result.error,
             )
+            publishResourceGroupResponse(resourceGroup, traceId, EntraStatus.ERROR)
             return
         }
 
@@ -138,6 +161,7 @@ class ResourceGroupConsumerService(
                 resourceGroup.resourceId,
                 traceId,
             )
+            publishResourceGroupResponse(resourceGroup, traceId, EntraStatus.ERROR)
             return
         }
 
@@ -155,6 +179,11 @@ class ResourceGroupConsumerService(
                 resourceGroup.resourceId,
                 groupId,
                 traceId,
+            )
+            publishResourceGroupResponse(
+                resourceGroup = resourceGroup.copy(idpGroupObjectId = groupId),
+                traceId = traceId,
+                status = EntraStatus.CREATED,
             )
             return
         }
@@ -177,6 +206,7 @@ class ResourceGroupConsumerService(
                 resourceGroup.resourceId,
                 traceId,
             )
+            publishResourceGroupResponse(resourceGroup, traceId, EntraStatus.FAILED)
             return
         }
 
@@ -186,6 +216,7 @@ class ResourceGroupConsumerService(
                 resourceGroup.resourceId,
                 traceId,
             )
+            publishResourceGroupResponse(resourceGroup, traceId, EntraStatus.FAILED)
             return
         }
 
@@ -197,6 +228,7 @@ class ResourceGroupConsumerService(
                 resourceGroup.resourceId,
                 traceId,
             )
+            publishResourceGroupResponse(resourceGroup, traceId, EntraStatus.FAILED)
             return
         }
 
@@ -217,16 +249,12 @@ class ResourceGroupConsumerService(
                 traceId,
             )
 
-            val publishedFailed =
-                publishExpected(
-                    resourceGroup = resourceGroup,
-                    traceId = traceId,
-                    status = EntraStatus.ERROR,
-                )
+            val publishedError =
+                publishResourceGroupResponse(resourceGroup, traceId, EntraStatus.ERROR)
 
-            if (!publishedFailed) {
+            if (!publishedError) {
                 log.warn(
-                    "ResourceGroupId {} was not updated in Entra, and FAILED status was not published. traceId={}",
+                    "ResourceGroupId {} was not updated in Entra, and ERROR status was not published. traceId={}",
                     resourceGroup.resourceId,
                     traceId,
                 )
@@ -249,6 +277,7 @@ class ResourceGroupConsumerService(
                 groupId,
                 traceId,
             )
+            publishResourceGroupResponse(resourceGroup, traceId, EntraStatus.UPDATED)
             return
         }
 
@@ -270,29 +299,40 @@ class ResourceGroupConsumerService(
                 resourceGroup.resourceId,
                 traceId,
             )
+            publishResourceGroupResponse(resourceGroup, traceId, EntraStatus.FAILED)
             return
         }
 
-        val groupId =
-            resourceGroup.idpGroupObjectId
-                ?: when (val lookup = findGroupForDelete(resourceGroup.resourceId, traceId)) {
-                    is DeleteGroupLookup.Found -> {
-                        lookup.groupId
-                    }
+        val groupId = resourceGroup.idpGroupObjectId
 
-                    is DeleteGroupLookup.AlreadyDeleted -> {
-                        deleteLocalStateForAlreadyDeletedGroup(
-                            resourceGroupId = resourceGroup.resourceId,
-                            groupId = lookup.localGroupId,
-                            traceId = traceId,
-                        )
-                        return
-                    }
+        if (groupId.isNullOrBlank()) {
+            log.warn(
+                "Cannot delete Entra group for ResourceGroupId {}; groupObjectId is required for DELETE. traceId={}",
+                resourceGroup.resourceId,
+                traceId,
+            )
+            publishResourceGroupResponse(resourceGroup, traceId, EntraStatus.FAILED)
+            return
+        }
 
-                    DeleteGroupLookup.LookupFailed -> {
-                        return
-                    }
-                }
+        val verifiedGroup =
+            entraGroupCommandService.verifyGroupByIdAndResourceGroupId(
+                groupId = groupId,
+                resourceGroupId = resourceGroup.resourceId,
+            )
+
+        if (!verifiedGroup.success) {
+            log.warn(
+                "ResourceGroupId {} was NOT deleted because Entra group {} could not be verified: {}. traceId={}",
+                resourceGroup.resourceId,
+                groupId,
+                verifiedGroup.message,
+                traceId,
+                verifiedGroup.error,
+            )
+            publishResourceGroupResponse(resourceGroup, traceId, EntraStatus.FAILED)
+            return
+        }
 
         val result =
             entraGroupCommandService.deleteGroupById(
@@ -309,6 +349,7 @@ class ResourceGroupConsumerService(
                 traceId,
                 result.error,
             )
+            publishResourceGroupResponse(resourceGroup, traceId, EntraStatus.ERROR)
             return
         }
 
@@ -326,88 +367,13 @@ class ResourceGroupConsumerService(
                 resourceGroup.resourceId,
                 traceId,
             )
+            publishResourceGroupResponse(resourceGroup, traceId, EntraStatus.DELETED)
             return
         }
 
         log.info(
             "ResourceGroupId {} was deleted from Entra group {}. traceId={}",
             resourceGroup.resourceId,
-            groupId,
-            traceId,
-        )
-    }
-
-    private fun findGroupForDelete(
-        resourceGroupId: String,
-        traceId: String,
-    ): DeleteGroupLookup =
-        try {
-            val groupId = entraGroupCommandService.findGroupIdByResourceGroupId(resourceGroupId)
-
-            if (groupId.isNullOrBlank()) {
-                val localGroupId = entraGroupStateService.findObjectIdByResourceGroupId(resourceGroupId)
-
-                log.info(
-                    "ResourceGroupId {} had no matching Entra group; treating as already deleted. traceId={}",
-                    resourceGroupId,
-                    traceId,
-                )
-                DeleteGroupLookup.AlreadyDeleted(localGroupId)
-            } else {
-                DeleteGroupLookup.Found(groupId)
-            }
-        } catch (e: IllegalStateException) {
-            log.error(
-                "Skipping delete for ResourceGroupId {} because multiple matching Entra groups were found. traceId={}",
-                resourceGroupId,
-                traceId,
-                e,
-            )
-            DeleteGroupLookup.LookupFailed
-        } catch (e: Exception) {
-            log.error(
-                "Failed looking up Entra group for ResourceGroupId {}; skipping delete. traceId={}",
-                resourceGroupId,
-                traceId,
-                e,
-            )
-            DeleteGroupLookup.LookupFailed
-        }
-
-    private fun deleteLocalStateForAlreadyDeletedGroup(
-        resourceGroupId: String,
-        groupId: String?,
-        traceId: String,
-    ) {
-        if (groupId.isNullOrBlank()) {
-            log.info(
-                "ResourceGroupId {} had no local group state to delete. traceId={}",
-                resourceGroupId,
-                traceId,
-            )
-            return
-        }
-
-        val deletedAndPublished =
-            entraGroupStateService.deleteAndPublish(
-                objectId = groupId,
-                resourceGroupId = resourceGroupId.toLongOrNull(),
-                traceId = traceId,
-            )
-
-        if (!deletedAndPublished) {
-            log.warn(
-                "ResourceGroupId {} was already deleted from Entra, but local state deletion/publish failed. groupId={}, traceId={}",
-                resourceGroupId,
-                groupId,
-                traceId,
-            )
-            return
-        }
-
-        log.info(
-            "ResourceGroupId {} was already deleted from Entra; removed local state for group {}. traceId={}",
-            resourceGroupId,
             groupId,
             traceId,
         )
@@ -542,33 +508,46 @@ class ResourceGroupConsumerService(
         }
     }
 
-    private fun publishExpected(
-        resourceGroup: ResourceGroup,
+    private fun publishResourceGroupResponse(
+        resourceGroup: ResourceGroup?,
         traceId: String,
         status: EntraStatus,
     ): Boolean {
-        val expectedEntraGroup = entraGroupMapper.expectedFromResourceGroup(resourceGroup)
+        val objectId = resourceGroup?.idpGroupObjectId?.takeIf { it.isNotBlank() }
+        val key =
+            objectId
+                ?: resourceGroup
+                    ?.resourceId
+                    ?.takeIf { it.isNotBlank() }
+                ?: traceId
 
-        if (expectedEntraGroup.objectId.isNullOrBlank()) {
-            log.warn(
-                "Cannot publish expected Entra group for ResourceGroupId {}; missing objectId. traceId={}",
-                resourceGroup.resourceId,
-                traceId,
+        val displayName =
+            resourceGroup
+                ?.takeIf { !it.resourceName.isNullOrBlank() }
+                ?.let { group ->
+                    runCatching {
+                        entraGroupMapper.buildDisplayName(group)
+                    }.getOrDefault(group.resourceName.orEmpty())
+                }
+
+        return runCatching {
+            groupProducerService.publishResourceGroupResponse(
+                key = key,
+                objectId = objectId,
+                displayName = displayName,
+                resourceGroupId = resourceGroup?.resourceId?.toLongOrNull(),
+                traceId = traceId,
+                status = status,
             )
-            return false
-        }
-
-        if (expectedEntraGroup.resourceGroupID == null) {
-            log.warn(
-                "Cannot publish expected Entra group {}; invalid resourceGroupId {}. traceId={}",
-                expectedEntraGroup.objectId,
-                resourceGroup.resourceId,
+        }.onFailure {
+            log.error(
+                "Failed publishing resource-group response. key={}, traceId={}, status={}",
+                key,
                 traceId,
+                status,
+                it,
             )
-            return false
-        }
-
-        return entraGroupStateService.publish(expectedEntraGroup, traceId, status)
+        }.isSuccess
     }
 
     private sealed interface ExistingGroupLookup {
@@ -579,18 +558,6 @@ class ResourceGroupConsumerService(
         data object NotFound : ExistingGroupLookup
 
         data object LookupFailed : ExistingGroupLookup
-    }
-
-    private sealed interface DeleteGroupLookup {
-        data class Found(
-            val groupId: String,
-        ) : DeleteGroupLookup
-
-        data class AlreadyDeleted(
-            val localGroupId: String?,
-        ) : DeleteGroupLookup
-
-        data object LookupFailed : DeleteGroupLookup
     }
 
     companion object {

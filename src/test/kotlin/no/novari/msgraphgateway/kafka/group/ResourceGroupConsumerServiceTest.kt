@@ -17,6 +17,7 @@ class ResourceGroupConsumerServiceTest {
     private val entraGroupMapper = mockk<EntraGroupMapper>()
     private val entraGroupStateService = mockk<EntraGroupStateService>()
     private val entraGroupCommandService = mockk<EntraGroupCommandService>()
+    private val groupProducerService = mockk<GroupProducerService>(relaxed = true)
 
     private val service =
         ResourceGroupConsumerService(
@@ -24,11 +25,30 @@ class ResourceGroupConsumerServiceTest {
             entraGroupMapper = entraGroupMapper,
             entraGroupStateService = entraGroupStateService,
             entraGroupCommandService = entraGroupCommandService,
+            groupProducerService = groupProducerService,
         )
 
     @BeforeEach
     fun setUp() {
         every { entraGroupStateService.findObjectIdByResourceGroupId(any()) } returns null
+    }
+
+    @Test
+    fun `process publishes failed response when resource group payload is null`() {
+        val traceId = "trace-null-123"
+
+        service.process(null, traceId)
+
+        verify(exactly = 1) {
+            groupProducerService.publishResourceGroupResponse(
+                key = traceId,
+                objectId = null,
+                displayName = null,
+                resourceGroupId = null,
+                traceId = traceId,
+                status = EntraStatus.FAILED,
+            )
+        }
     }
 
     @Test
@@ -177,6 +197,38 @@ class ResourceGroupConsumerServiceTest {
     }
 
     @Test
+    fun `process publishes error response when create fails in Entra`() {
+        val traceId = "trace-create-error-123"
+        val resourceGroup = createResourceGroup()
+
+        every { entraGroupCommandService.findGroupIdByResourceGroupId("12345") } returns null
+        every { entraGroupCommandService.createGroup(resourceGroup) } returns
+            EntraGroupCommandService.EntraGroupCommandResult(
+                success = false,
+                message = "Failed creating Entra group",
+                error = RuntimeException("Graph error"),
+            )
+
+        service.process(resourceGroup, traceId)
+
+        verify(exactly = 1) {
+            groupProducerService.publishResourceGroupResponse(
+                key = "12345",
+                objectId = null,
+                displayName = "TestGroup",
+                resourceGroupId = 12345L,
+                traceId = traceId,
+                status = EntraStatus.ERROR,
+            )
+        }
+
+        verify(exactly = 0) {
+            entraGroupStateService.storeAndPublish(any(), any(), any())
+            entraGroupStateService.storeAndPublishIfChanged(any(), any(), any())
+        }
+    }
+
+    @Test
     fun `process updates group and publishes local state even when unchanged`() {
         val traceId = "trace-UPDATE-123"
         val groupId = "11111111-1111-1111-1111-111111111111"
@@ -223,39 +275,45 @@ class ResourceGroupConsumerServiceTest {
                 message = "Failed updating Entra group",
                 error = RuntimeException("Graph error"),
             )
-        every { entraGroupMapper.expectedFromResourceGroup(resourceGroup) } returns
-            EntraGroup(
-                objectId = groupId,
-                displayName = "UpdatedGroup",
-                resourceGroupID = 12345,
-            )
-        every { entraGroupStateService.publish(any(), traceId, EntraStatus.ERROR) } returns true
 
         service.process(resourceGroup, traceId)
 
         verify(exactly = 1) {
             entraGroupCommandService.updateGroup(resourceGroup)
-            entraGroupStateService.publish(
-                match {
-                    it.objectId == groupId &&
-                        it.resourceGroupID == 12345L
-                },
-                traceId,
-                EntraStatus.ERROR,
+            groupProducerService.publishResourceGroupResponse(
+                key = groupId,
+                objectId = groupId,
+                displayName = "UpdatedGroup",
+                resourceGroupId = 12345L,
+                traceId = traceId,
+                status = EntraStatus.ERROR,
             )
         }
 
         verify(exactly = 0) {
             entraGroupStateService.storeAndPublish(any(), any(), any())
             entraGroupStateService.storeAndPublishIfChanged(any(), any(), any())
+            entraGroupStateService.publish(any(), any(), any())
         }
     }
 
     @Test
     fun `process does not call graph when create is missing resourceName`() {
         val resourceGroup = createResourceGroup(resourceName = null)
+        val traceId = "trace-123"
 
-        service.process(resourceGroup, "trace-123")
+        service.process(resourceGroup, traceId)
+
+        verify(exactly = 1) {
+            groupProducerService.publishResourceGroupResponse(
+                key = "12345",
+                objectId = null,
+                displayName = null,
+                resourceGroupId = 12345L,
+                traceId = traceId,
+                status = EntraStatus.FAILED,
+            )
+        }
 
         verify(exactly = 0) {
             entraGroupStateService.findObjectIdByResourceGroupId(any())
@@ -268,8 +326,20 @@ class ResourceGroupConsumerServiceTest {
     @Test
     fun `process does not call graph when create has invalid resourceGroupId`() {
         val resourceGroup = createResourceGroup(id = "abc")
+        val traceId = "trace-123"
 
-        service.process(resourceGroup, "trace-123")
+        service.process(resourceGroup, traceId)
+
+        verify(exactly = 1) {
+            groupProducerService.publishResourceGroupResponse(
+                key = "abc",
+                objectId = null,
+                displayName = "TestGroup",
+                resourceGroupId = null,
+                traceId = traceId,
+                status = EntraStatus.FAILED,
+            )
+        }
 
         verify(exactly = 0) {
             entraGroupStateService.findObjectIdByResourceGroupId(any())
@@ -281,12 +351,25 @@ class ResourceGroupConsumerServiceTest {
 
     @Test
     fun `process does not call graph when create has groupObjectId`() {
+        val traceId = "trace-123"
+        val groupId = "11111111-1111-1111-1111-111111111111"
         val resourceGroup =
             createResourceGroup(
-                groupObjectId = "11111111-1111-1111-1111-111111111111",
+                groupObjectId = groupId,
             )
 
-        service.process(resourceGroup, "trace-123")
+        service.process(resourceGroup, traceId)
+
+        verify(exactly = 1) {
+            groupProducerService.publishResourceGroupResponse(
+                key = groupId,
+                objectId = groupId,
+                displayName = "TestGroup",
+                resourceGroupId = 12345L,
+                traceId = traceId,
+                status = EntraStatus.FAILED,
+            )
+        }
 
         verify(exactly = 0) {
             entraGroupStateService.findObjectIdByResourceGroupId(any())
@@ -297,14 +380,34 @@ class ResourceGroupConsumerServiceTest {
     }
 
     @Test
-    fun `process deletes local state when delete group is already missing in Entra`() {
-        val traceId = "trace-delete-lookup-123"
+    fun `process deletes group when delete has verified groupObjectId and resourceGroupId`() {
+        val traceId = "trace-delete-123"
         val groupId = "11111111-1111-1111-1111-111111111111"
-        val resourceGroup = deleteResourceGroup()
+        val resourceGroup = deleteResourceGroup(groupObjectId = groupId)
 
         every { configGroup.allowGroupDelete } returns true
-        every { entraGroupCommandService.findGroupIdByResourceGroupId("12345") } returns null
-        every { entraGroupStateService.findObjectIdByResourceGroupId("12345") } returns groupId
+        every {
+            entraGroupCommandService.verifyGroupByIdAndResourceGroupId(
+                groupId = groupId,
+                resourceGroupId = "12345",
+            )
+        } returns
+            EntraGroupCommandService.EntraGroupCommandResult(
+                success = true,
+                groupId = groupId,
+                message = "Verified Entra group",
+            )
+        every {
+            entraGroupCommandService.deleteGroupById(
+                groupId = groupId,
+                resourceGroupId = "12345",
+            )
+        } returns
+            EntraGroupCommandService.EntraGroupCommandResult(
+                success = true,
+                groupId = groupId,
+                message = "Deleted Entra group",
+            )
         every {
             entraGroupStateService.deleteAndPublish(
                 objectId = groupId,
@@ -316,38 +419,91 @@ class ResourceGroupConsumerServiceTest {
         service.process(resourceGroup, traceId)
 
         verify(exactly = 1) {
-            entraGroupCommandService.findGroupIdByResourceGroupId("12345")
-            entraGroupStateService.findObjectIdByResourceGroupId("12345")
+            entraGroupCommandService.verifyGroupByIdAndResourceGroupId(
+                groupId = groupId,
+                resourceGroupId = "12345",
+            )
+            entraGroupCommandService.deleteGroupById(
+                groupId = groupId,
+                resourceGroupId = "12345",
+            )
             entraGroupStateService.deleteAndPublish(
                 objectId = groupId,
                 resourceGroupId = 12345L,
                 traceId = traceId,
             )
         }
-
-        verify(exactly = 0) {
-            entraGroupCommandService.deleteGroupById(any(), any())
-        }
     }
 
     @Test
-    fun `process does not delete local state when delete group is missing in Entra and local state is missing`() {
-        val traceId = "trace-delete-lookup-123"
+    fun `process does not delete when delete is missing groupObjectId`() {
+        val traceId = "trace-delete-missing-object-123"
         val resourceGroup = deleteResourceGroup()
 
         every { configGroup.allowGroupDelete } returns true
-        every { entraGroupCommandService.findGroupIdByResourceGroupId("12345") } returns null
-        every { entraGroupStateService.findObjectIdByResourceGroupId("12345") } returns null
 
         service.process(resourceGroup, traceId)
 
         verify(exactly = 1) {
-            entraGroupCommandService.findGroupIdByResourceGroupId("12345")
-            entraGroupStateService.findObjectIdByResourceGroupId("12345")
+            groupProducerService.publishResourceGroupResponse(
+                key = "12345",
+                objectId = null,
+                displayName = null,
+                resourceGroupId = 12345L,
+                traceId = traceId,
+                status = EntraStatus.FAILED,
+            )
         }
 
         verify(exactly = 0) {
+            entraGroupCommandService.findGroupIdByResourceGroupId(any())
+            entraGroupCommandService.verifyGroupByIdAndResourceGroupId(any(), any())
             entraGroupCommandService.deleteGroupById(any(), any())
+            entraGroupStateService.findObjectIdByResourceGroupId(any())
+            entraGroupStateService.deleteAndPublish(any(), any(), any())
+        }
+    }
+
+    @Test
+    fun `process does not delete when delete group verification fails`() {
+        val traceId = "trace-delete-mismatch-123"
+        val groupId = "11111111-1111-1111-1111-111111111111"
+        val resourceGroup = deleteResourceGroup(groupObjectId = groupId)
+
+        every { configGroup.allowGroupDelete } returns true
+        every {
+            entraGroupCommandService.verifyGroupByIdAndResourceGroupId(
+                groupId = groupId,
+                resourceGroupId = "12345",
+            )
+        } returns
+            EntraGroupCommandService.EntraGroupCommandResult(
+                success = false,
+                groupId = groupId,
+                message = "Entra group did not match resourceGroupId",
+            )
+
+        service.process(resourceGroup, traceId)
+
+        verify(exactly = 1) {
+            entraGroupCommandService.verifyGroupByIdAndResourceGroupId(
+                groupId = groupId,
+                resourceGroupId = "12345",
+            )
+            groupProducerService.publishResourceGroupResponse(
+                key = groupId,
+                objectId = groupId,
+                displayName = null,
+                resourceGroupId = 12345L,
+                traceId = traceId,
+                status = EntraStatus.FAILED,
+            )
+        }
+
+        verify(exactly = 0) {
+            entraGroupCommandService.findGroupIdByResourceGroupId(any())
+            entraGroupCommandService.deleteGroupById(any(), any())
+            entraGroupStateService.findObjectIdByResourceGroupId(any())
             entraGroupStateService.deleteAndPublish(any(), any(), any())
         }
     }
@@ -364,12 +520,12 @@ class ResourceGroupConsumerServiceTest {
             idpGroupObjectId = groupObjectId,
         )
 
-    private fun deleteResourceGroup(): ResourceGroup =
+    private fun deleteResourceGroup(groupObjectId: String? = null): ResourceGroup =
         ResourceGroup(
             operation = ResourceGroupOperation.DELETE,
             resourceId = "12345",
             resourceName = null,
-            idpGroupObjectId = null,
+            idpGroupObjectId = groupObjectId,
         )
 
     private fun updateResourceGroup(groupObjectId: String): ResourceGroup =

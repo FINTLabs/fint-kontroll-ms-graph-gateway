@@ -110,6 +110,42 @@ class GroupProducerService(
         )
     }
 
+    fun publishResourceGroupResponse(
+        key: String,
+        objectId: String?,
+        displayName: String?,
+        resourceGroupId: Long?,
+        traceId: String?,
+        status: EntraStatus,
+    ) {
+        log.debug(
+            "Publishing resource-group response to Kafka: key={}, objectId={}, resourceGroupId={}, traceId={}, status={}",
+            key,
+            objectId,
+            resourceGroupId,
+            traceId,
+            status,
+        )
+
+        val payload =
+            EntraGroupPayload(
+                objectId = objectId,
+                displayName = displayName,
+                resourceGroupId = resourceGroupId,
+                traceId = traceId,
+                status = status,
+            )
+
+        entraGroupTemplate.send(
+            ParameterizedProducerRecord
+                .builder<EntraGroupPayload>()
+                .topicNameParameters(nameParameters)
+                .key(key)
+                .value(payload)
+                .build(),
+        )
+    }
+
     companion object {
         private val log = LoggerFactory.getLogger(GroupProducerService::class.java)
     }
