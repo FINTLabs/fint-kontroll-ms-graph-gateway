@@ -1,8 +1,6 @@
 package no.novari.msgraphgateway.kafka.membership
 
-import io.mockk.Runs
 import io.mockk.every
-import io.mockk.just
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
@@ -11,8 +9,6 @@ import no.novari.kafka.consuming.ErrorHandlerFactory
 import no.novari.kafka.consuming.ListenerConfiguration
 import no.novari.kafka.consuming.ParameterizedListenerContainerFactory
 import no.novari.kafka.consuming.ParameterizedListenerContainerFactoryService
-import no.novari.kafka.topic.EventTopicService
-import no.novari.kafka.topic.configuration.EventTopicConfiguration
 import no.novari.kafka.topic.name.EventTopicNameParameters
 import no.novari.msgraphgateway.kafka.OperationType
 import no.novari.msgraphgateway.membership.device.DeviceMembershipProcessingProperties
@@ -23,14 +19,12 @@ import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Test
 import org.springframework.kafka.listener.ConcurrentMessageListenerContainer
 import org.springframework.kafka.listener.DefaultErrorHandler
-import java.time.Duration
 import java.util.function.Consumer
 
 class MembershipConsumerTest {
     private val listenerContainerFactoryService = mockk<ParameterizedListenerContainerFactoryService>()
     private val errorHandlerFactory = mockk<ErrorHandlerFactory>()
     private val membershipService = mockk<MembershipService>(relaxed = true)
-    private val eventTopicService = mockk<EventTopicService>()
     private val errorHandler = mockk<DefaultErrorHandler>()
     private val listenerFactory = mockk<ParameterizedListenerContainerFactory<DeviceResourceGroupMembership>>()
     private val container = mockk<ConcurrentMessageListenerContainer<String, DeviceResourceGroupMembership>>()
@@ -41,30 +35,6 @@ class MembershipConsumerTest {
             graphBatchSize = 20,
             resultTopicPartitions = 1,
         )
-
-    @Test
-    fun `constructor creates membership input topic so missing topic on first startup is recovered`() {
-        every {
-            eventTopicService.createOrModifyTopic(
-                any<EventTopicNameParameters>(),
-                any<EventTopicConfiguration>(),
-            )
-        } just Runs
-
-        membershipConsumer()
-
-        verify(exactly = 1) {
-            eventTopicService.createOrModifyTopic(
-                match {
-                    it.eventName == MEMBERSHIP_EVENT_NAME
-                },
-                match {
-                    it.partitions == 1 &&
-                        it.retentionTime == Duration.ofDays(7)
-                },
-            )
-        }
-    }
 
     @Test
     fun `container listens on membership event topic and forwards batches`() {
@@ -84,12 +54,6 @@ class MembershipConsumerTest {
             )
         val batchListener = slot<Consumer<List<ConsumerRecord<String, DeviceResourceGroupMembership>>>>()
 
-        every {
-            eventTopicService.createOrModifyTopic(
-                any<EventTopicNameParameters>(),
-                any<EventTopicConfiguration>(),
-            )
-        } just Runs
         every {
             errorHandlerFactory.createErrorHandler(any<ErrorHandlerConfiguration<DeviceResourceGroupMembership>>())
         } returns errorHandler
@@ -123,7 +87,6 @@ class MembershipConsumerTest {
             errorHandlerFactory = errorHandlerFactory,
             membershipService = membershipService,
             properties = properties,
-            eventTopicService = eventTopicService,
         )
 
     companion object {
