@@ -27,6 +27,14 @@ novari:
                 initial-delay-ms: 10000
             full-import:
                 cron: "0 15 3 * * *"
+        group:
+            delta:
+                fixed-delay-ms: 13000
+                initial-delay-ms: 7000
+            full-import:
+                cron: 0 0 * * * *
+            weekly-publish:
+                cron: 0 */2 * * * *
 
 fint:
     kontroll:
