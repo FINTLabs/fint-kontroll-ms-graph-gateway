@@ -176,6 +176,8 @@ class EntraGroupSyncService(
                     checksum = checksum,
                 )
 
+            if (prepared.rows.isEmpty()) return@coroutineScope 0
+
             val changedIds: Set<UUID> =
                 dbBatchPermits.withPermit {
                     withContext(Dispatchers.IO) {
@@ -223,6 +225,8 @@ class EntraGroupSyncService(
                     toDto = toDto,
                     checksum = checksum,
                 )
+
+            if (prepared.rows.isEmpty()) return@coroutineScope 0
 
             dbBatchPermits.withPermit {
                 withContext(Dispatchers.IO) {
@@ -295,7 +299,7 @@ class EntraGroupSyncService(
                 val checksum: Checksum,
             )
 
-            val computed =
+            val validCandidates =
                 candidates
                     .mapNotNull { (id, group) ->
                         val resourceGroupId =
@@ -305,13 +309,23 @@ class EntraGroupSyncService(
                                     return@mapNotNull null
                                 }
 
+                        GroupCandidate(
+                            id = id,
+                            group = group,
+                            resourceGroupId = resourceGroupId,
+                        )
+                    }.selectUsableCandidates()
+
+            val computed =
+                validCandidates
+                    .map { candidate ->
                         async(Dispatchers.Default) {
-                            val dto = toDto(group)
+                            val dto = toDto(candidate.group)
 
                             checksumPermits.withPermit {
                                 Computed(
-                                    id = id,
-                                    resourceGroupId = resourceGroupId,
+                                    id = candidate.id,
+                                    resourceGroupId = candidate.resourceGroupId,
                                     dto = dto,
                                     checksum = checksum(dto),
                                 )
@@ -335,6 +349,59 @@ class EntraGroupSyncService(
 
             PreparedBatch(rows = rows, dtoById = dtoById)
         }
+
+    private suspend fun List<GroupCandidate>.selectUsableCandidates(): List<GroupCandidate> {
+        if (isEmpty()) return emptyList()
+
+        val candidatesByResourceGroupId = groupBy { it.resourceGroupId }
+
+        if (candidatesByResourceGroupId.values.all { it.size == 1 }) {
+            return this
+        }
+
+        val selected = ArrayList<GroupCandidate>(size)
+
+        candidatesByResourceGroupId.forEach { (resourceGroupId, candidates) ->
+            if (candidates.size == 1) {
+                selected += candidates.first()
+                return@forEach
+            }
+
+            val storedObjectId =
+                withContext(Dispatchers.IO) {
+                    groupRepository.findObjectIdByResourceGroupId(resourceGroupId)
+                }
+            val storedCandidate = storedObjectId?.let { objectId -> candidates.firstOrNull { it.id == objectId } }
+            val duplicateIds = candidates.joinToString { it.id.toString() }
+
+            if (storedCandidate != null) {
+                log.error(
+                    "Duplicate resourceGroupId {} found for Entra groups [{}]. " +
+                        "Updating existing group {} only. Clean up duplicate resourceGroupId in Entra before these groups can be used.",
+                    resourceGroupId,
+                    duplicateIds,
+                    storedCandidate.id,
+                )
+                selected += storedCandidate
+            } else {
+                log.error(
+                    "Duplicate resourceGroupId {} found for Entra groups [{}]. " +
+                        "No matching existing group is stored; skipping all of them. " +
+                        "Clean up duplicate resourceGroupId in Entra before these groups can be used.",
+                    resourceGroupId,
+                    duplicateIds,
+                )
+            }
+        }
+
+        return selected
+    }
+
+    private data class GroupCandidate(
+        val id: UUID,
+        val group: Group,
+        val resourceGroupId: Long,
+    )
 
     private data class PreparedBatch<DTO : Any>(
         val rows: List<GroupStateRepository.UpsertRow>,

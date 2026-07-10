@@ -436,6 +436,112 @@ class EntraGroupSyncServiceTest {
         }
 
     @Test
+    fun `processPage skips duplicate resource group id when no existing group is stored`() =
+        runTest {
+            val firstId = UUID.randomUUID()
+            val secondId = UUID.randomUUID()
+
+            val firstGroup =
+                group(
+                    id = firstId.toString(),
+                    displayName = "Test_SUFFIX",
+                    additionalData = mapOf("extension_resourceGroupId" to "123456"),
+                )
+
+            val secondGroup =
+                group(
+                    id = secondId.toString(),
+                    displayName = "Test_SUFFIX",
+                    additionalData = mapOf("extension_resourceGroupId" to "123456"),
+                )
+
+            every { configGroup.prefix } returns null
+            every { configGroup.suffix } returns "_SUFFIX"
+            every { configGroup.filterMode } returns ConfigGroup.FilterMode.SUFFIX
+            every { configGroup.resourceGroupIdAttribute } returns "extension_resourceGroupId"
+            coEvery { groupRepository.findObjectIdByResourceGroupId(123456L) } returns null
+
+            val result =
+                service.processPage(
+                    groups = listOf(firstGroup, secondGroup),
+                    notSeenIncremented = mutableSetOf(),
+                    republishAll = false,
+                )
+
+            assertEquals(0, result)
+
+            coVerify(exactly = 1) {
+                groupRepository.findObjectIdByResourceGroupId(123456L)
+            }
+
+            coVerify(exactly = 0) {
+                groupRepository.batchUpsertReturningChanged(any())
+            }
+
+            coVerify(exactly = 0) {
+                producer.publish(any())
+            }
+        }
+
+    @Test
+    fun `processPage updates only stored group when duplicate resource group id exists`() =
+        runTest {
+            val storedId = UUID.randomUUID()
+            val duplicateId = UUID.randomUUID()
+
+            val storedGroup =
+                group(
+                    id = storedId.toString(),
+                    displayName = "Test_SUFFIX",
+                    additionalData = mapOf("extension_resourceGroupId" to "123456"),
+                )
+
+            val duplicateGroup =
+                group(
+                    id = duplicateId.toString(),
+                    displayName = "Test_SUFFIX",
+                    additionalData = mapOf("extension_resourceGroupId" to "123456"),
+                )
+
+            every { configGroup.prefix } returns null
+            every { configGroup.suffix } returns "_SUFFIX"
+            every { configGroup.filterMode } returns ConfigGroup.FilterMode.SUFFIX
+            every { configGroup.resourceGroupIdAttribute } returns "extension_resourceGroupId"
+            every { checksumService.checksum(any()) } returns Checksum("checksum".toByteArray())
+
+            coEvery { groupRepository.findObjectIdByResourceGroupId(123456L) } returns storedId
+            coEvery { groupRepository.batchUpsertReturningChanged(any()) } returns setOf(storedId)
+            coEvery { producer.publish(any()) } just Runs
+
+            val result =
+                service.processPage(
+                    groups = listOf(storedGroup, duplicateGroup),
+                    notSeenIncremented = mutableSetOf(),
+                    republishAll = false,
+                )
+
+            assertEquals(1, result)
+
+            coVerify(exactly = 1) {
+                groupRepository.findObjectIdByResourceGroupId(123456L)
+            }
+
+            coVerify(exactly = 1) {
+                groupRepository.batchUpsertReturningChanged(
+                    match { rows ->
+                        rows.size == 1 &&
+                            rows.first().objectId == storedId &&
+                            rows.first().resourceGroupId == 123456L
+                    },
+                )
+            }
+
+            coVerify(exactly = 1) {
+                producer.publish(any())
+            }
+        }
+
+    @Test
     fun `processPage increments notSeenCount for removed group when it exists in repository`() =
         runTest {
             val removedId = UUID.randomUUID()
