@@ -239,6 +239,18 @@ class ResourceGroupConsumerService(
             traceId,
         )
 
+        val expectedEntraGroup = entraGroupMapper.expectedFromResourceGroup(resourceGroup)
+        if (entraGroupStateService.isUnchanged(expectedEntraGroup)) {
+            log.info(
+                "ResourceGroupId {} was unchanged for Entra group {}. traceId={}",
+                resourceGroup.resourceId,
+                groupId,
+                traceId,
+            )
+            publishResourceGroupResponse(resourceGroup, traceId, EntraStatus.NO_CHANGES)
+            return
+        }
+
         val result = entraGroupCommandService.updateGroup(resourceGroup)
 
         if (!result.success) {

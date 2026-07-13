@@ -31,6 +31,7 @@ class ResourceGroupConsumerServiceTest {
     @BeforeEach
     fun setUp() {
         every { entraGroupStateService.findObjectIdByResourceGroupId(any()) } returns null
+        every { entraGroupStateService.isUnchanged(any()) } returns false
     }
 
     @Test
@@ -229,7 +230,7 @@ class ResourceGroupConsumerServiceTest {
     }
 
     @Test
-    fun `process updates group and publishes local state even when unchanged`() {
+    fun `process updates group and publishes local state when changed`() {
         val traceId = "trace-UPDATE-123"
         val groupId = "11111111-1111-1111-1111-111111111111"
         val resourceGroup = updateResourceGroup(groupObjectId = groupId)
@@ -262,12 +263,55 @@ class ResourceGroupConsumerServiceTest {
     }
 
     @Test
+    fun `process publishes no changes when update is unchanged`() {
+        val traceId = "trace-UPDATE-NO-CHANGES-123"
+        val groupId = "11111111-1111-1111-1111-111111111111"
+        val resourceGroup = updateResourceGroup(groupObjectId = groupId)
+        val expectedGroup =
+            EntraGroup(
+                objectId = groupId,
+                displayName = "UpdatedGroup",
+                resourceGroupID = 12345,
+            )
+
+        every { configGroup.allowGroupUpdate } returns true
+        every { entraGroupMapper.expectedFromResourceGroup(resourceGroup) } returns expectedGroup
+        every { entraGroupStateService.isUnchanged(expectedGroup) } returns true
+
+        service.process(resourceGroup, traceId)
+
+        verify(exactly = 1) {
+            entraGroupStateService.isUnchanged(expectedGroup)
+            groupProducerService.publishResourceGroupResponse(
+                key = groupId,
+                objectId = groupId,
+                displayName = "UpdatedGroup",
+                resourceGroupId = 12345L,
+                traceId = traceId,
+                status = EntraStatus.NO_CHANGES,
+            )
+        }
+
+        verify(exactly = 0) {
+            entraGroupCommandService.updateGroup(any())
+            entraGroupStateService.storeAndPublish(any(), any(), any())
+            entraGroupStateService.storeAndPublishIfChanged(any(), any(), any())
+        }
+    }
+
+    @Test
     fun `process publishes failed status when update fails in Entra`() {
         val traceId = "trace-UPDATE-FAILED-123"
         val groupId = "11111111-1111-1111-1111-111111111111"
         val resourceGroup = updateResourceGroup(groupObjectId = groupId)
 
         every { configGroup.allowGroupUpdate } returns true
+        every { entraGroupMapper.expectedFromResourceGroup(resourceGroup) } returns
+            EntraGroup(
+                objectId = groupId,
+                displayName = "UpdatedGroup",
+                resourceGroupID = 12345,
+            )
         every { entraGroupCommandService.updateGroup(resourceGroup) } returns
             EntraGroupCommandService.EntraGroupCommandResult(
                 success = false,
