@@ -35,7 +35,7 @@ class ResourceGroupConsumerServiceTest {
     }
 
     @Test
-    fun `process publishes failed response when resource group payload is null`() {
+    fun `process publishes error response when resource group payload is null`() {
         val traceId = "trace-null-123"
 
         service.process(null, traceId)
@@ -47,7 +47,7 @@ class ResourceGroupConsumerServiceTest {
                 displayName = null,
                 resourceGroupId = null,
                 traceId = traceId,
-                status = EntraStatus.FAILED,
+                status = EntraStatus.ERROR,
             )
         }
     }
@@ -161,14 +161,14 @@ class ResourceGroupConsumerServiceTest {
                 displayName = "TestGroup",
                 resourceGroupID = 12345,
             )
-        every { entraGroupStateService.storeAndPublish(any(), traceId, EntraStatus.CREATED) } returns true
+        every { entraGroupStateService.storeAndPublish(any(), traceId, EntraStatus.NO_CHANGES) } returns true
 
         service.process(resourceGroup, traceId)
 
         verify(exactly = 1) {
             entraGroupStateService.findObjectIdByResourceGroupId("12345")
             entraGroupCommandService.findGroupIdByResourceGroupId("12345")
-            entraGroupStateService.storeAndPublish(any(), traceId, EntraStatus.CREATED)
+            entraGroupStateService.storeAndPublish(any(), traceId, EntraStatus.NO_CHANGES)
         }
 
         verify(exactly = 0) {
@@ -300,7 +300,7 @@ class ResourceGroupConsumerServiceTest {
     }
 
     @Test
-    fun `process publishes failed status when update fails in Entra`() {
+    fun `process publishes error status when update fails in Entra`() {
         val traceId = "trace-UPDATE-FAILED-123"
         val groupId = "11111111-1111-1111-1111-111111111111"
         val resourceGroup = updateResourceGroup(groupObjectId = groupId)
@@ -342,6 +342,35 @@ class ResourceGroupConsumerServiceTest {
     }
 
     @Test
+    fun `process does not call graph when update has invalid resourceGroupId`() {
+        val traceId = "trace-update-invalid-resource-id-123"
+        val groupId = "11111111-1111-1111-1111-111111111111"
+        val resourceGroup = updateResourceGroup(id = "abc", groupObjectId = groupId)
+
+        every { configGroup.allowGroupUpdate } returns true
+
+        service.process(resourceGroup, traceId)
+
+        verify(exactly = 1) {
+            groupProducerService.publishResourceGroupResponse(
+                key = groupId,
+                objectId = groupId,
+                displayName = "UpdatedGroup",
+                resourceGroupId = null,
+                traceId = traceId,
+                status = EntraStatus.ERROR,
+            )
+        }
+
+        verify(exactly = 0) {
+            entraGroupMapper.expectedFromResourceGroup(any())
+            entraGroupCommandService.updateGroup(any())
+            entraGroupStateService.storeAndPublish(any(), any(), any())
+            entraGroupStateService.storeAndPublishIfChanged(any(), any(), any())
+        }
+    }
+
+    @Test
     fun `process does not call graph when create is missing resourceName`() {
         val resourceGroup = createResourceGroup(resourceName = null)
         val traceId = "trace-123"
@@ -355,7 +384,7 @@ class ResourceGroupConsumerServiceTest {
                 displayName = null,
                 resourceGroupId = 12345L,
                 traceId = traceId,
-                status = EntraStatus.FAILED,
+                status = EntraStatus.ERROR,
             )
         }
 
@@ -381,7 +410,7 @@ class ResourceGroupConsumerServiceTest {
                 displayName = "TestGroup",
                 resourceGroupId = null,
                 traceId = traceId,
-                status = EntraStatus.FAILED,
+                status = EntraStatus.ERROR,
             )
         }
 
@@ -411,7 +440,7 @@ class ResourceGroupConsumerServiceTest {
                 displayName = "TestGroup",
                 resourceGroupId = 12345L,
                 traceId = traceId,
-                status = EntraStatus.FAILED,
+                status = EntraStatus.ERROR,
             )
         }
 
@@ -572,10 +601,13 @@ class ResourceGroupConsumerServiceTest {
             idpGroupObjectId = groupObjectId,
         )
 
-    private fun updateResourceGroup(groupObjectId: String): ResourceGroup =
+    private fun updateResourceGroup(
+        id: String = "12345",
+        groupObjectId: String,
+    ): ResourceGroup =
         ResourceGroup(
             operation = ResourceGroupOperation.UPDATE,
-            resourceId = "12345",
+            resourceId = id,
             resourceName = "UpdatedGroup",
             idpGroupObjectId = groupObjectId,
         )

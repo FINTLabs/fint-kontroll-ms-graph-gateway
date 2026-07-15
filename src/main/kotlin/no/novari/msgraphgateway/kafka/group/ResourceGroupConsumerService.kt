@@ -32,7 +32,7 @@ class ResourceGroupConsumerService(
 
         if (resourceGroup == null) {
             log.warn("ResourceGroup payload was null. traceId={}", resolvedTraceId)
-            publishResourceGroupResponse(null, resolvedTraceId, EntraStatus.FAILED)
+            publishResourceGroupResponse(null, resolvedTraceId, EntraStatus.ERROR)
             return
         }
 
@@ -64,7 +64,7 @@ class ResourceGroupConsumerService(
                 resourceGroup.resourceId,
                 traceId,
             )
-            publishResourceGroupResponse(resourceGroup, traceId, EntraStatus.FAILED)
+            publishResourceGroupResponse(resourceGroup, traceId, EntraStatus.ERROR)
             return
         }
 
@@ -74,7 +74,7 @@ class ResourceGroupConsumerService(
                 resourceGroup.resourceId,
                 traceId,
             )
-            publishResourceGroupResponse(resourceGroup, traceId, EntraStatus.FAILED)
+            publishResourceGroupResponse(resourceGroup, traceId, EntraStatus.ERROR)
             return
         }
 
@@ -85,7 +85,7 @@ class ResourceGroupConsumerService(
                 resourceGroup.idpGroupObjectId,
                 traceId,
             )
-            publishResourceGroupResponse(resourceGroup, traceId, EntraStatus.FAILED)
+            publishResourceGroupResponse(resourceGroup, traceId, EntraStatus.ERROR)
             return
         }
 
@@ -96,7 +96,7 @@ class ResourceGroupConsumerService(
                         resourceGroup = resourceGroup.copy(idpGroupObjectId = existingGroup.groupId),
                         traceId = traceId,
                         forcePublish = true,
-                        status = EntraStatus.CREATED,
+                        status = EntraStatus.NO_CHANGES,
                     )
 
                 if (storedAndPublished) {
@@ -116,7 +116,7 @@ class ResourceGroupConsumerService(
                     publishResourceGroupResponse(
                         resourceGroup = resourceGroup.copy(idpGroupObjectId = existingGroup.groupId),
                         traceId = traceId,
-                        status = EntraStatus.CREATED,
+                        status = EntraStatus.NO_CHANGES,
                     )
                 }
                 return
@@ -210,13 +210,23 @@ class ResourceGroupConsumerService(
             return
         }
 
+        if (resourceGroup.resourceId.toLongOrNull() == null) {
+            log.warn(
+                "Cannot update Entra group; resourceGroup.id is required and must be numeric. resourceGroupId={}, traceId={}",
+                resourceGroup.resourceId,
+                traceId,
+            )
+            publishResourceGroupResponse(resourceGroup, traceId, EntraStatus.ERROR)
+            return
+        }
+
         if (resourceGroup.resourceName.isNullOrBlank()) {
             log.warn(
                 "Cannot update Entra group for ResourceGroupId {}; resourceName is required. traceId={}",
                 resourceGroup.resourceId,
                 traceId,
             )
-            publishResourceGroupResponse(resourceGroup, traceId, EntraStatus.FAILED)
+            publishResourceGroupResponse(resourceGroup, traceId, EntraStatus.ERROR)
             return
         }
 
@@ -228,7 +238,7 @@ class ResourceGroupConsumerService(
                 resourceGroup.resourceId,
                 traceId,
             )
-            publishResourceGroupResponse(resourceGroup, traceId, EntraStatus.FAILED)
+            publishResourceGroupResponse(resourceGroup, traceId, EntraStatus.ERROR)
             return
         }
 
