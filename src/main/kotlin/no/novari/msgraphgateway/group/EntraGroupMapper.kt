@@ -17,9 +17,11 @@ class EntraGroupMapper(
         )
 
     fun buildDisplayName(resourceGroup: ResourceGroup): String {
-        val prefix = configGroup.prefix.orEmpty()
-        val suffix = configGroup.suffix.orEmpty()
-        return "$prefix${resourceGroup.resourceName}$suffix"
+        val prefix = configGroup.prefix?.trim().orEmpty()
+        val suffix = configGroup.suffix?.trim().orEmpty()
+        val resourceName = resourceGroup.resourceName.orEmpty()
+
+        return "$prefix$resourceName$suffix"
     }
 
     fun buildMailNickname(resourceGroup: ResourceGroup): String =

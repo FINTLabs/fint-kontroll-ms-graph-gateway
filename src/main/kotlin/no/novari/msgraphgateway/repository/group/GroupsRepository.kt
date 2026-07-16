@@ -149,6 +149,13 @@ open class GroupsRepository(
         WHERE resource_group_id = :resourceGroupId
         """.trimIndent()
 
+    private val findResourceGroupIdByObjectIdSql =
+        """
+        SELECT resource_group_id
+        FROM $table
+        WHERE object_id = :objectId
+        """.trimIndent()
+
     override fun findStaleObjectIds(cutoff: Instant): List<UUID> {
         val params =
             MapSqlParameterSource()
@@ -178,7 +185,7 @@ open class GroupsRepository(
 
         val objectIds = rows.map { it.objectId }.toTypedArray()
         val resourceGroupIds = rows.map { it.resourceGroupId }.toTypedArray()
-        val checksums = rows.map { it.checksum }.toTypedArray()
+        val checksums = rows.map { it.checksum.bytes }.toTypedArray()
         val lastSeenAts = rows.map { it.lastSeenAt }.toTypedArray()
 
         return jdbc.jdbcTemplate.execute { conn: Connection ->
@@ -201,7 +208,7 @@ open class GroupsRepository(
 
         val objectIds = rows.map { it.objectId }.toTypedArray()
         val resourceGroupIds = rows.map { it.resourceGroupId }.toTypedArray()
-        val checksums = rows.map { it.checksum }.toTypedArray()
+        val checksums = rows.map { it.checksum.bytes }.toTypedArray()
         val lastSeenAts = rows.map { it.lastSeenAt }.toTypedArray()
 
         jdbc.jdbcTemplate.execute { conn: Connection ->
@@ -264,6 +271,15 @@ open class GroupsRepository(
         return jdbc
             .query(findObjectIdByResourceGroupIdSql, params) { rs, _ ->
                 rs.getObject("object_id", UUID::class.java)
+            }.firstOrNull()
+    }
+
+    override fun findResourceGroupIdByObjectId(objectId: UUID): Long? {
+        val params = MapSqlParameterSource().addValue("objectId", objectId)
+
+        return jdbc
+            .query(findResourceGroupIdByObjectIdSql, params) { rs, _ ->
+                rs.getLong("resource_group_id")
             }.firstOrNull()
     }
 }

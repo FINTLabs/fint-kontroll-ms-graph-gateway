@@ -210,7 +210,9 @@ class ResourceGroupConsumerService(
             return
         }
 
-        if (resourceGroup.resourceId.toLongOrNull() == null) {
+        val resourceGroupId = resourceGroup.resourceId.toLongOrNull()
+
+        if (resourceGroupId == null) {
             log.warn(
                 "Cannot update Entra group; resourceGroup.id is required and must be numeric. resourceGroupId={}, traceId={}",
                 resourceGroup.resourceId,
@@ -242,12 +244,10 @@ class ResourceGroupConsumerService(
             return
         }
 
-        log.info(
-            "Updating Entra group {} for ResourceGroupId {}. traceId={}",
-            groupId,
-            resourceGroup.resourceId,
-            traceId,
-        )
+        if (hasResourceGroupIdConflict(resourceGroup, groupId, resourceGroupId, traceId)) {
+            publishResourceGroupResponse(resourceGroup, traceId, EntraStatus.ERROR)
+            return
+        }
 
         val expectedEntraGroup = entraGroupMapper.expectedFromResourceGroup(resourceGroup)
         if (entraGroupStateService.isUnchanged(expectedEntraGroup)) {
@@ -260,6 +260,13 @@ class ResourceGroupConsumerService(
             publishResourceGroupResponse(resourceGroup, traceId, EntraStatus.NO_CHANGES)
             return
         }
+
+        log.info(
+            "Updating Entra group {} for ResourceGroupId {}. traceId={}",
+            groupId,
+            resourceGroup.resourceId,
+            traceId,
+        )
 
         val result = entraGroupCommandService.updateGroup(resourceGroup)
 
@@ -311,6 +318,39 @@ class ResourceGroupConsumerService(
         )
     }
 
+    private fun hasResourceGroupIdConflict(
+        resourceGroup: ResourceGroup,
+        groupId: String,
+        resourceGroupId: Long,
+        traceId: String,
+    ): Boolean {
+        val storedObjectId = entraGroupStateService.findObjectIdByResourceGroupId(resourceGroup.resourceId)
+        if (!storedObjectId.isNullOrBlank() && !storedObjectId.equals(groupId, ignoreCase = true)) {
+            log.warn(
+                "Cannot update Entra group {}; ResourceGroupId {} is already linked to Entra group {}. traceId={}",
+                groupId,
+                resourceGroup.resourceId,
+                storedObjectId,
+                traceId,
+            )
+            return true
+        }
+
+        val storedResourceGroupId = entraGroupStateService.findResourceGroupIdByObjectId(groupId)
+        if (storedResourceGroupId != null && storedResourceGroupId != resourceGroupId) {
+            log.warn(
+                "Cannot update Entra group {}; objectId is already linked to ResourceGroupId {}, not {}. traceId={}",
+                groupId,
+                storedResourceGroupId,
+                resourceGroup.resourceId,
+                traceId,
+            )
+            return true
+        }
+
+        return false
+    }
+
     private fun deleteAndPublish(
         resourceGroup: ResourceGroup,
         traceId: String,
@@ -333,7 +373,7 @@ class ResourceGroupConsumerService(
                 resourceGroup.resourceId,
                 traceId,
             )
-            publishResourceGroupResponse(resourceGroup, traceId, EntraStatus.FAILED)
+            publishResourceGroupResponse(resourceGroup, traceId, EntraStatus.ERROR)
             return
         }
 

@@ -18,11 +18,34 @@ class EntraGroupStateService(
     private val groupProducerService: GroupProducerService,
 ) {
     fun isUnchanged(entraGroup: EntraGroup): Boolean {
-        val objectId = parseObjectIdOrNull(entraGroup.objectId) ?: return false
-        val storedChecksum = groupRepository.findChecksumById(objectId) ?: return false
-        val incomingChecksum = checksumService.checksum(entraGroup)
+        val objectId =
+            parseObjectIdOrNull(entraGroup.objectId)
+                ?: run {
+                    log.warn("Cannot compare Entra group state; invalid objectId {}", entraGroup.objectId)
+                    return false
+                }
+        val storedChecksum =
+            groupRepository.findChecksumById(objectId)
+                ?: run {
+                    log.info(
+                        "Entra group {} has no stored checksum; treating ResourceGroupId {} as changed",
+                        objectId,
+                        entraGroup.resourceGroupID,
+                    )
+                    return false
+                }
+        val incomingChecksum = checksumService.checksum(entraGroup.copy(traceId = null, status = null))
 
-        return storedChecksum.bytes.contentEquals(incomingChecksum.bytes)
+        val unchanged = storedChecksum.bytes.contentEquals(incomingChecksum.bytes)
+        if (!unchanged) {
+            log.info(
+                "Entra group {} checksum differs; treating ResourceGroupId {} with displayName '{}' as changed",
+                objectId,
+                entraGroup.resourceGroupID,
+                entraGroup.displayName,
+            )
+        }
+        return unchanged
     }
 
     fun findObjectIdByResourceGroupId(resourceGroupId: String): String? {
@@ -31,6 +54,12 @@ class EntraGroupStateService(
         return groupRepository
             .findObjectIdByResourceGroupId(parsedResourceGroupId)
             ?.toString()
+    }
+
+    fun findResourceGroupIdByObjectId(objectId: String): Long? {
+        val parsedObjectId = parseObjectIdOrNull(objectId) ?: return null
+
+        return groupRepository.findResourceGroupIdByObjectId(parsedObjectId)
     }
 
     fun storeAndPublishIfChanged(

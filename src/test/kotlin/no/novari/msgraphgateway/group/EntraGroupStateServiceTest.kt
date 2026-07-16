@@ -58,6 +58,32 @@ class EntraGroupStateServiceTest {
     }
 
     @Test
+    fun `findResourceGroupIdByObjectId returns stored resourceGroupId`() {
+        val objectId = UUID.randomUUID()
+
+        every { groupRepository.findResourceGroupIdByObjectId(objectId) } returns 12345L
+
+        val result = service.findResourceGroupIdByObjectId(objectId.toString())
+
+        assertEquals(12345L, result)
+
+        verify(exactly = 1) {
+            groupRepository.findResourceGroupIdByObjectId(objectId)
+        }
+    }
+
+    @Test
+    fun `findResourceGroupIdByObjectId returns null when objectId is invalid`() {
+        val result = service.findResourceGroupIdByObjectId("not-a-uuid")
+
+        assertNull(result)
+
+        verify(exactly = 0) {
+            groupRepository.findResourceGroupIdByObjectId(any())
+        }
+    }
+
+    @Test
     fun `isUnchanged returns false when objectId is invalid`() {
         val result =
             service.isUnchanged(
@@ -130,6 +156,32 @@ class EntraGroupStateServiceTest {
 
         verify(exactly = 1) {
             checksumService.checksum(any())
+        }
+    }
+
+    @Test
+    fun `isUnchanged compares checksum without traceId and status`() {
+        val objectId = UUID.randomUUID()
+        val checksum = Checksum("same-checksum".toByteArray())
+        val incomingGroup =
+            EntraGroup(
+                objectId = objectId.toString(),
+                displayName = "TestGroup",
+                resourceGroupID = 12345,
+                traceId = "trace-123",
+                status = EntraStatus.UPDATED,
+            )
+        val expectedChecksumInput = incomingGroup.copy(traceId = null, status = null)
+
+        every { groupRepository.findChecksumById(objectId) } returns checksum
+        every { checksumService.checksum(expectedChecksumInput) } returns checksum
+
+        val result = service.isUnchanged(incomingGroup)
+
+        assertTrue(result)
+
+        verify(exactly = 1) {
+            checksumService.checksum(expectedChecksumInput)
         }
     }
 

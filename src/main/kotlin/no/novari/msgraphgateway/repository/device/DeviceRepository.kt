@@ -83,7 +83,7 @@ open class DevicesRepository(
         if (rows.isEmpty()) return
 
         val objectIds = rows.map { it.objectId }.toTypedArray()
-        val checksums = rows.map { it.checksum }.toTypedArray()
+        val checksums = rows.map { it.checksum.bytes }.toTypedArray()
         val lastSeenAts = rows.map { it.lastSeenAt }.toTypedArray()
 
         jdbc.jdbcTemplate.execute { conn: Connection ->
@@ -162,7 +162,7 @@ open class DevicesRepository(
         if (rows.isEmpty()) return emptySet()
 
         val objectIds = rows.map { it.objectId }.toTypedArray()
-        val checksums = rows.map { it.checksum }.toTypedArray()
+        val checksums = rows.map { it.checksum.bytes }.toTypedArray()
         val lastSeenAts = rows.map { it.lastSeenAt }.toTypedArray()
 
         return jdbc.jdbcTemplate.execute { conn: Connection ->

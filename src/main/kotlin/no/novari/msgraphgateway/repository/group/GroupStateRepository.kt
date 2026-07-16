@@ -35,5 +35,7 @@ interface GroupStateRepository {
 
     fun findObjectIdByResourceGroupId(resourceGroupId: Long): UUID?
 
+    fun findResourceGroupIdByObjectId(objectId: UUID): Long?
+
     fun getCount(): Int
 }
