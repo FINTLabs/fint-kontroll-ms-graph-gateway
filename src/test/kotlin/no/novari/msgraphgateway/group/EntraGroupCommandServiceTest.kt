@@ -418,8 +418,8 @@ class EntraGroupCommandServiceTest {
 
         assertThrows<IllegalStateException> {
             service.findGroupIdByResourceGroupId("12345")
-            }
         }
+    }
 
     private class TestApiException(
         statusCode: Int,
