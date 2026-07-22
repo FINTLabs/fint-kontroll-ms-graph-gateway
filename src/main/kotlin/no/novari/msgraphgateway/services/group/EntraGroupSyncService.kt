@@ -60,19 +60,22 @@ class EntraGroupSyncService(
         var deletedTotal = 0
 
         for (batch in deletableIds.chunked(batchSize)) {
-            val deletedObjectIds =
+            val deletedRows =
                 withContext(Dispatchers.IO) {
-                    groupRepository.deleteByIdsReturningObjectIds(batch)
+                    groupRepository.deleteByIdsReturningRows(batch)
                 }
 
-            deletedTotal += deletedObjectIds.size
+            deletedTotal += deletedRows.size
 
             coroutineScope {
-                deletedObjectIds
-                    .map { objectId ->
+                deletedRows
+                    .map { row ->
                         async(Dispatchers.IO) {
                             kafkaPermits.withPermit {
-                                producer.publishDeletedGroup(objectId.toString())
+                                producer.publishDeletedGroup(
+                                    groupId = row.objectId.toString(),
+                                    resourceGroupId = row.resourceGroupId,
+                                )
                             }
                         }
                     }.awaitAll()

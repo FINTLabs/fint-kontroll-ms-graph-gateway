@@ -4,6 +4,7 @@ import com.microsoft.graph.models.Group
 import com.microsoft.graph.serviceclient.GraphServiceClient
 import com.microsoft.kiota.ApiException
 import no.novari.msgraphgateway.config.ConfigGroup
+import no.novari.msgraphgateway.entra.EntraStatus
 import no.novari.msgraphgateway.group.EntraGroupMapper
 import no.novari.msgraphgateway.kafka.group.ResourceGroup
 import org.slf4j.LoggerFactory
@@ -20,6 +21,7 @@ class EntraGroupCommandService(
         val groupId: String? = null,
         val message: String? = null,
         val error: Throwable? = null,
+        val failureStatus: EntraStatus = EntraStatus.ERROR,
     )
 
     fun createGroup(resourceGroup: ResourceGroup): EntraGroupCommandResult {
@@ -67,6 +69,7 @@ class EntraGroupCommandService(
                     success = false,
                     message = "Failed creating Entra group",
                     error = it,
+                    failureStatus = classifyFailure(it),
                 )
             },
         )
@@ -130,6 +133,7 @@ class EntraGroupCommandService(
                     groupId = groupId,
                     message = "Failed updating Entra group",
                     error = it,
+                    failureStatus = classifyFailure(it),
                 )
             },
         )
@@ -162,6 +166,7 @@ class EntraGroupCommandService(
                     success = false,
                     message = "Failed looking up Entra group",
                     error = e,
+                    failureStatus = classifyFailure(e),
                 )
             }
 
@@ -220,6 +225,7 @@ class EntraGroupCommandService(
                     groupId = groupId,
                     message = "Failed deleting Entra group",
                     error = it,
+                    failureStatus = classifyFailure(it),
                 )
             },
         )
@@ -332,6 +338,7 @@ class EntraGroupCommandService(
                         groupId = groupId,
                         message = "Failed verifying Entra group",
                         error = it,
+                        failureStatus = classifyFailure(it),
                     )
                 }
             },
@@ -400,5 +407,16 @@ class EntraGroupCommandService(
 
     companion object {
         private val log = LoggerFactory.getLogger(EntraGroupCommandService::class.java)
+
+        private fun classifyFailure(error: Throwable): EntraStatus {
+            val statusCode = (error as? ApiException)?.responseStatusCode
+
+            return when {
+                statusCode == null -> EntraStatus.FAILED
+                statusCode == 408 || statusCode == 429 -> EntraStatus.FAILED
+                statusCode in 500..599 -> EntraStatus.FAILED
+                else -> EntraStatus.ERROR
+            }
+        }
     }
 }

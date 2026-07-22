@@ -48,7 +48,7 @@ open class GroupsRepository(
         """
         DELETE FROM $table
         WHERE object_id IN (:objectIds)
-        RETURNING object_id
+        RETURNING object_id, resource_group_id
         """.trimIndent()
 
     private val incrementNotSeenCountSql =
@@ -227,7 +227,7 @@ open class GroupsRepository(
         jdbc.update(deleteByIdSql, MapSqlParameterSource().addValue("objectId", objectId))
     }
 
-    override fun deleteByIdsReturningObjectIds(objectIds: Collection<UUID>): List<UUID> {
+    override fun deleteByIdsReturningRows(objectIds: Collection<UUID>): List<GroupStateRepository.DeletedRow> {
         if (objectIds.isEmpty()) return emptyList()
 
         val params =
@@ -235,7 +235,10 @@ open class GroupsRepository(
                 .addValue("objectIds", objectIds)
 
         return jdbc.query(deleteByIdsSql, params) { rs, _ ->
-            rs.getObject("object_id", UUID::class.java)
+            GroupStateRepository.DeletedRow(
+                objectId = rs.getObject("object_id", UUID::class.java),
+                resourceGroupId = rs.getLong("resource_group_id"),
+            )
         }
     }
 

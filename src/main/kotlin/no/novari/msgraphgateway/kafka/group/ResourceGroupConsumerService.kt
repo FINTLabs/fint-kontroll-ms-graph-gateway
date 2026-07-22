@@ -149,7 +149,7 @@ class ResourceGroupConsumerService(
                 traceId,
                 result.error,
             )
-            publishResourceGroupResponse(resourceGroup, traceId, EntraStatus.ERROR)
+            publishResourceGroupResponse(resourceGroup, traceId, result.failureStatus)
             return
         }
 
@@ -279,12 +279,13 @@ class ResourceGroupConsumerService(
             )
 
             val publishedError =
-                publishResourceGroupResponse(resourceGroup, traceId, EntraStatus.ERROR)
+                publishResourceGroupResponse(resourceGroup, traceId, result.failureStatus)
 
             if (!publishedError) {
                 log.warn(
-                    "ResourceGroupId {} was not updated in Entra, and ERROR status was not published. traceId={}",
+                    "ResourceGroupId {} was not updated in Entra, and {} status was not published. traceId={}",
                     resourceGroup.resourceId,
+                    result.failureStatus,
                     traceId,
                 )
             }
@@ -392,7 +393,7 @@ class ResourceGroupConsumerService(
                 traceId,
                 verifiedGroup.error,
             )
-            publishResourceGroupResponse(resourceGroup, traceId, EntraStatus.FAILED)
+            publishResourceGroupResponse(resourceGroup, traceId, verifiedGroup.failureStatus)
             return
         }
 
@@ -411,7 +412,7 @@ class ResourceGroupConsumerService(
                 traceId,
                 result.error,
             )
-            publishResourceGroupResponse(resourceGroup, traceId, EntraStatus.ERROR)
+            publishResourceGroupResponse(resourceGroup, traceId, result.failureStatus)
             return
         }
 

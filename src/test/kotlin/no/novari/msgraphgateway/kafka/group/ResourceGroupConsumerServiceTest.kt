@@ -209,6 +209,7 @@ class ResourceGroupConsumerServiceTest {
                 success = false,
                 message = "Failed creating Entra group",
                 error = RuntimeException("Graph error"),
+                failureStatus = EntraStatus.FAILED,
             )
 
         service.process(resourceGroup, traceId)
@@ -220,7 +221,7 @@ class ResourceGroupConsumerServiceTest {
                 displayName = "TestGroup",
                 resourceGroupId = 12345L,
                 traceId = traceId,
-                status = EntraStatus.ERROR,
+                status = EntraStatus.FAILED,
             )
         }
 
@@ -380,6 +381,7 @@ class ResourceGroupConsumerServiceTest {
                 groupId = groupId,
                 message = "Failed updating Entra group",
                 error = RuntimeException("Graph error"),
+                failureStatus = EntraStatus.FAILED,
             )
 
         service.process(resourceGroup, traceId)
@@ -392,7 +394,7 @@ class ResourceGroupConsumerServiceTest {
                 displayName = "UpdatedGroup",
                 resourceGroupId = 12345L,
                 traceId = traceId,
-                status = EntraStatus.ERROR,
+                status = EntraStatus.FAILED,
             )
         }
 
@@ -631,7 +633,7 @@ class ResourceGroupConsumerServiceTest {
                 displayName = null,
                 resourceGroupId = 12345L,
                 traceId = traceId,
-                status = EntraStatus.FAILED,
+                status = EntraStatus.ERROR,
             )
         }
 

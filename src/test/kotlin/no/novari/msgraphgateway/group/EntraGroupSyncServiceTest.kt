@@ -6,6 +6,7 @@ import kotlinx.coroutines.test.runTest
 import no.novari.msgraphgateway.config.ConfigGroup
 import no.novari.msgraphgateway.kafka.group.GroupProducerService
 import no.novari.msgraphgateway.repository.group.GroupRepository
+import no.novari.msgraphgateway.repository.group.GroupStateRepository
 import no.novari.msgraphgateway.services.Checksum
 import no.novari.msgraphgateway.services.ChecksumService
 import no.novari.msgraphgateway.services.group.EntraGroupSyncService
@@ -40,11 +41,16 @@ class EntraGroupSyncServiceTest {
         }
 
     @Test
-    fun `finishFullImport deletes stale groups and publishes deleted events`() =
+    fun `finishFullImport deletes stale groups and publishes deleted events with resourceGroupId`() =
         runTest {
             val cutoff = Instant.parse("2026-06-15T10:00:00Z")
             val id1 = UUID.randomUUID()
             val id2 = UUID.randomUUID()
+            val deletedRows =
+                listOf(
+                    GroupStateRepository.DeletedRow(id1, 12345L),
+                    GroupStateRepository.DeletedRow(id2, 67890L),
+                )
 
             every { configGroup.minNotSeenCount } returns 2
 
@@ -53,10 +59,10 @@ class EntraGroupSyncServiceTest {
             } returns listOf(id1, id2)
 
             coEvery {
-                groupRepository.deleteByIdsReturningObjectIds(listOf(id1, id2))
-            } returns listOf(id1, id2)
+                groupRepository.deleteByIdsReturningRows(listOf(id1, id2))
+            } returns deletedRows
 
-            coEvery { producer.publishDeletedGroup(any()) } just Runs
+            coEvery { producer.publishDeletedGroup(any(), any(), any()) } just Runs
 
             val result = service.finishFullImport(cutoff)
 
@@ -67,15 +73,15 @@ class EntraGroupSyncServiceTest {
             }
 
             coVerify(exactly = 1) {
-                groupRepository.deleteByIdsReturningObjectIds(listOf(id1, id2))
+                groupRepository.deleteByIdsReturningRows(listOf(id1, id2))
             }
 
             coVerify(exactly = 1) {
-                producer.publishDeletedGroup(id1.toString())
+                producer.publishDeletedGroup(id1.toString(), 12345L)
             }
 
             coVerify(exactly = 1) {
-                producer.publishDeletedGroup(id2.toString())
+                producer.publishDeletedGroup(id2.toString(), 67890L)
             }
         }
 
@@ -95,7 +101,7 @@ class EntraGroupSyncServiceTest {
             assertEquals(0, result)
 
             coVerify(exactly = 0) {
-                groupRepository.deleteByIdsReturningObjectIds(any())
+                groupRepository.deleteByIdsReturningRows(any())
             }
 
             coVerify(exactly = 0) {

@@ -12,6 +12,11 @@ interface GroupStateRepository {
         val lastSeenAt: Instant,
     )
 
+    data class DeletedRow(
+        val objectId: UUID,
+        val resourceGroupId: Long,
+    )
+
     fun findStaleObjectIds(cutoff: Instant): List<UUID>
 
     fun batchUpsertReturningChanged(rows: List<UpsertRow>): Set<UUID>
@@ -20,7 +25,7 @@ interface GroupStateRepository {
 
     fun deleteById(objectId: UUID)
 
-    fun deleteByIdsReturningObjectIds(objectIds: Collection<UUID>): List<UUID>
+    fun deleteByIdsReturningRows(objectIds: Collection<UUID>): List<DeletedRow>
 
     fun findStaleObjectIdsWithNotSeenCountGreaterThan(
         cutoff: Instant,

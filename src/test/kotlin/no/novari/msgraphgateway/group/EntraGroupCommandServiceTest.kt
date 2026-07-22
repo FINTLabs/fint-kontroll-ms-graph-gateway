@@ -5,11 +5,13 @@ import com.microsoft.graph.groups.item.GroupItemRequestBuilder
 import com.microsoft.graph.models.Group
 import com.microsoft.graph.models.GroupCollectionResponse
 import com.microsoft.graph.serviceclient.GraphServiceClient
+import com.microsoft.kiota.ApiException
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
 import no.novari.msgraphgateway.config.ConfigGroup
+import no.novari.msgraphgateway.entra.EntraStatus
 import no.novari.msgraphgateway.kafka.group.ResourceGroup
 import no.novari.msgraphgateway.kafka.group.ResourceGroupOperation
 import no.novari.msgraphgateway.services.group.EntraGroupCommandService
@@ -119,6 +121,48 @@ class EntraGroupCommandServiceTest {
             entraGroupMapper.buildDisplayName(any())
             entraGroupMapper.buildMailNickname(any())
         }
+    }
+
+    @Test
+    fun `createGroup returns failed status for throttling`() {
+        val apiException = TestApiException(429)
+        every { groupsRequestBuilder.post(any<Group>()) } throws apiException
+        every { entraGroupMapper.buildDisplayName(any()) } returns "TestGroup_SUFFIX"
+        every { entraGroupMapper.buildMailNickname(any()) } returns "testgroup-suffix"
+
+        val result =
+            service.createGroup(
+                ResourceGroup(
+                    operation = ResourceGroupOperation.CREATE,
+                    resourceId = "12345",
+                    resourceName = "TestGroup",
+                    idpGroupObjectId = null,
+                ),
+            )
+
+        assertFalse(result.success)
+        assertEquals(EntraStatus.FAILED, result.failureStatus)
+    }
+
+    @Test
+    fun `createGroup returns error status for permanent graph errors`() {
+        val apiException = TestApiException(404)
+        every { groupsRequestBuilder.post(any<Group>()) } throws apiException
+        every { entraGroupMapper.buildDisplayName(any()) } returns "TestGroup_SUFFIX"
+        every { entraGroupMapper.buildMailNickname(any()) } returns "testgroup-suffix"
+
+        val result =
+            service.createGroup(
+                ResourceGroup(
+                    operation = ResourceGroupOperation.CREATE,
+                    resourceId = "12345",
+                    resourceName = "TestGroup",
+                    idpGroupObjectId = null,
+                ),
+            )
+
+        assertFalse(result.success)
+        assertEquals(EntraStatus.ERROR, result.failureStatus)
     }
 
     @Test
@@ -374,6 +418,14 @@ class EntraGroupCommandServiceTest {
 
         assertThrows<IllegalStateException> {
             service.findGroupIdByResourceGroupId("12345")
+            }
+        }
+
+    private class TestApiException(
+        statusCode: Int,
+    ) : ApiException("Graph failed with $statusCode") {
+        init {
+            responseStatusCode = statusCode
         }
     }
 }
