@@ -37,16 +37,13 @@ class EntraUserSyncService(
         users: List<User>?,
         notSeenIncremented: MutableSet<UUID>,
         republishAll: Boolean,
-    ): UserSyncPageResult {
-        if (users.isNullOrEmpty()) return UserSyncPageResult(0, 0)
+    ): Int {
+        if (users.isNullOrEmpty()) return 0
         var publishedTotal = 0
-        var removedTotal = 0
         for (batch in users.chunked(batchSize)) {
-            val result = processBatch(batch, notSeenIncremented, republishAll)
-            publishedTotal += result.publishedUsers
-            removedTotal += result.removedUsers
+            publishedTotal += processBatch(batch, notSeenIncremented, republishAll)
         }
-        return UserSyncPageResult(publishedTotal, removedTotal)
+        return publishedTotal
     }
 
     suspend fun finishFullImport(cutoff: Instant): Int =
@@ -104,14 +101,13 @@ class EntraUserSyncService(
         batch: List<User>,
         notSeenIncremented: MutableSet<UUID>,
         republishAll: Boolean,
-    ): UserSyncPageResult =
+    ): Int =
         coroutineScope {
             val now = Instant.now()
 
             val removedUsers = batch.filter { it.additionalData.containsKey("@removed") }
-            val removedCount = removedUsers.size
             if (removedUsers.isNotEmpty()) {
-                log.info("There are {} removed users", removedCount)
+                log.info("There are {} removed users", removedUsers.size)
                 removedUsers.forEach { u ->
                     handleRemoved(u.id, notSeenIncremented)
                 }
@@ -128,81 +124,72 @@ class EntraUserSyncService(
                     }.distinctBy { it.first }
                     .toList()
 
-            if (candidates.isEmpty()) {
-                return@coroutineScope UserSyncPageResult(
-                    publishedUsers = 0,
-                    removedUsers = removedCount,
-                )
-            }
+            if (candidates.isEmpty()) return@coroutineScope 0
 
             val externals = ArrayList<Pair<UUID, User>>()
             val normals = ArrayList<Pair<UUID, User>>()
 
             for ((id, u) in candidates) {
-                if (isExternal(u)) externals += id to u else normals += id to u
+                if (isExternal(u)) {
+                    externals += id to u
+                } else if (hasEmployeeOrStudentId(u)) {
+                    normals += id to u
+                }
             }
 
-            val published =
-                if (republishAll) {
-                    val publishedUsers =
-                        upsertAndPublishAll(
-                            now = now,
-                            repo = userRepository,
-                            candidates = normals,
-                            toDto = { u -> EntraUser(u, configUser) },
-                            publish = { dto -> producer.publish(dto) },
-                            checksum = { dto -> checksumService.checksum(dto) },
-                            logLabel = "users",
-                        )
+            val skipped = candidates.size - externals.size - normals.size
+            if (skipped > 0) {
+                log.debug("Skipped {} users with no employee or student ID", skipped)
+            }
 
-                    val publishedExternal =
-                        upsertAndPublishAll(
-                            now = now,
-                            repo = userExternalRepository,
-                            candidates = externals,
-                            toDto = { u -> EntraUserExternal(u, configUser) },
-                            publish = { dto -> externalProducer.publish(dto) },
-                            checksum = { dto -> checksumService.checksum(dto) },
-                            logLabel = "external users",
-                        )
+            if (republishAll) {
+                val publishedUsers =
+                    upsertAndPublishAll(
+                        now = now,
+                        repo = userRepository,
+                        candidates = normals,
+                        toDto = { u -> EntraUser(u, configUser) },
+                        publish = { dto -> producer.publish(dto) },
+                        checksum = { dto -> checksumService.checksum(dto) },
+                        logLabel = "users",
+                    )
 
-                    publishedUsers + publishedExternal
-                } else {
-                    val publishedUsers =
-                        upsertAndPublishChanged(
-                            now = now,
-                            repo = userRepository,
-                            candidates = normals,
-                            toDto = { u -> EntraUser(u, configUser) },
-                            publish = { dto -> producer.publish(dto) },
-                            checksum = { dto -> checksumService.checksum(dto) },
-                            logLabel = "users",
-                        )
+                val publishedExternal =
+                    upsertAndPublishAll(
+                        now = now,
+                        repo = userExternalRepository,
+                        candidates = externals,
+                        toDto = { u -> EntraUserExternal(u, configUser) },
+                        publish = { dto -> externalProducer.publish(dto) },
+                        checksum = { dto -> checksumService.checksum(dto) },
+                        logLabel = "external users",
+                    )
+                publishedUsers + publishedExternal
+            } else {
+                val publishedUsers =
+                    upsertAndPublishChanged(
+                        now = now,
+                        repo = userRepository,
+                        candidates = normals,
+                        toDto = { u -> EntraUser(u, configUser) },
+                        publish = { dto -> producer.publish(dto) },
+                        checksum = { dto -> checksumService.checksum(dto) },
+                        logLabel = "users",
+                    )
 
-                    val publishedExternal =
-                        upsertAndPublishChanged(
-                            now = now,
-                            repo = userExternalRepository,
-                            candidates = externals,
-                            toDto = { u -> EntraUserExternal(u, configUser) },
-                            publish = { dto -> externalProducer.publish(dto) },
-                            checksum = { dto -> checksumService.checksum(dto) },
-                            logLabel = "external users",
-                        )
-
-                    publishedUsers + publishedExternal
-                }
-
-            UserSyncPageResult(
-                publishedUsers = published,
-                removedUsers = removedCount,
-            )
+                val publishedExternal =
+                    upsertAndPublishChanged(
+                        now = now,
+                        repo = userExternalRepository,
+                        candidates = externals,
+                        toDto = { u -> EntraUserExternal(u, configUser) },
+                        publish = { dto -> externalProducer.publish(dto) },
+                        checksum = { dto -> checksumService.checksum(dto) },
+                        logLabel = "external users",
+                    )
+                publishedUsers + publishedExternal
+            }
         }
-
-    data class UserSyncPageResult(
-        val publishedUsers: Int,
-        val removedUsers: Int,
-    )
 
     private suspend fun <DTO : Any> upsertAndPublishChanged(
         now: Instant,
@@ -376,6 +363,11 @@ class EntraUserSyncService(
         val expected = configUser.externaluservalue ?: return false
         return attr.equals(expected, ignoreCase = true)
     }
+
+    private fun hasEmployeeOrStudentId(user: User): Boolean =
+        EntraUser(user, configUser).let {
+            !it.employeeId.isNullOrBlank() || !it.studentId.isNullOrBlank()
+        }
 
     companion object {
         private val log = LoggerFactory.getLogger(EntraUserSyncService::class.java)
