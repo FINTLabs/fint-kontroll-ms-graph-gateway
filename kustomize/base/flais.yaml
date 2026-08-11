@@ -6,7 +6,7 @@ metadata:
 spec:
   orgId: fintlabs.no
   replicas: 1
-  image: ghcr.io/fintlabs/fint-kontroll-ms-graph-gateway:latest
+  image: ghcr.io/fintlabs/fint-kontroll-ms-graph-gateway
   imagePullPolicy: Always
   env:
     - name: "JAVA_TOOL_OPTIONS"
