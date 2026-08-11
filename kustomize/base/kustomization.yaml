@@ -4,6 +4,7 @@ labels:
     - includeSelectors: true
       pairs:
           app.kubernetes.io/name: fint-kontroll-ms-graph-gateway
+          app.kubernetes.io/version: latest
           app.kubernetes.io/component: backend
           app.kubernetes.io/part-of: fint-kontroll
           fintlabs.no/team: bas

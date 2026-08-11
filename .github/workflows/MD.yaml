@@ -99,6 +99,20 @@ jobs:
                   tags: ${{ steps.meta.outputs.tags }}
                   labels: ${{ steps.meta.outputs.labels }}
 
+            - name: Set image in Kustomize
+              working-directory: kustomize/overlays/${{ steps.environment.outputs.result }}/${{ env.ORG }}
+              run: |
+                  IMAGE="${{ steps.meta.outputs.tags }}"
+                  cat >> kustomization.yaml <<EOF
+                    - patch: |-
+                        - op: replace
+                          path: "/spec/image"
+                          value: "${IMAGE}"
+                      target:
+                        kind: Application
+                        name: fint-kontroll-ms-graph-gateway
+                  EOF
+
             - name: Bake manifests with Kustomize
               uses: azure/k8s-bake@v4
               id: bake
@@ -128,7 +142,5 @@ jobs:
               uses: azure/k8s-deploy@v7
               with:
                   manifests: ${{ steps.bake.outputs.manifestsBundle }}
-                  images: |
-                      ${{ steps.meta.outputs.tags }}
                   namespace: ${{ env.ORG }}
                   action: deploy
