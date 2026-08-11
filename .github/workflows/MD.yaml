@@ -85,8 +85,8 @@ jobs:
                 with:
                     context: .
                     push: true
-                    tags: |
-                        ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+                    tags: ${{ steps.meta.outputs.tags }}
+                    labels: ${{ steps.meta.outputs.labels }}
 
             -   name: Bake manifests with Kustomize
                 uses: azure/k8s-bake@v4
@@ -119,5 +119,5 @@ jobs:
                     action: deploy
                     manifests: ${{ steps.bake.outputs.manifestsBundle }}
                     images: |
-                        ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+                        ${{ steps.meta.outputs.tags }}
                     namespace: ${{ env.ORG }}
