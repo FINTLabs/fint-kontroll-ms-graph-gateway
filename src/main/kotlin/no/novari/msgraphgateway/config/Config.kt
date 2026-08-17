@@ -15,7 +15,7 @@ import kotlin.emptyArray
 
 @Configuration
 @ConfigurationProperties(prefix = "ms-graph")
-open class Config {
+class Config {
     var timeout: Long = 0L
 
     var credentials: Credentials = Credentials()
@@ -28,7 +28,7 @@ open class Config {
     }
 
     @Bean
-    open fun graphServiceClient(): GraphServiceClient {
+    fun graphServiceClient(): GraphServiceClient {
         log.debug("Starting PostConstruct of Graph Service Client")
 
         val scopes = arrayOf("https://graph.microsoft.com/.default")

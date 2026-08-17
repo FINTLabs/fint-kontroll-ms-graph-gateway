@@ -2,19 +2,24 @@ package no.novari.msgraphgateway.user
 
 import com.microsoft.graph.models.User
 import com.microsoft.kiota.store.InMemoryBackingStore
+import io.mockk.Runs
 import io.mockk.clearAllMocks
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
+import io.mockk.just
 import io.mockk.mockk
 import io.mockk.verify
 import io.mockk.verifyOrder
 import kotlinx.coroutines.test.runTest
 import no.novari.msgraphgateway.config.ConfigUser
-import no.novari.msgraphgateway.kafka.UserExternalProducerService
-import no.novari.msgraphgateway.kafka.UserProducerService
-import no.novari.msgraphgateway.service.Checksum
-import no.novari.msgraphgateway.service.ChecksumService
+import no.novari.msgraphgateway.kafka.user.UserExternalProducerService
+import no.novari.msgraphgateway.kafka.user.UserProducerService
+import no.novari.msgraphgateway.repository.user.UserExternalRepository
+import no.novari.msgraphgateway.repository.user.UserRepository
+import no.novari.msgraphgateway.services.Checksum
+import no.novari.msgraphgateway.services.ChecksumService
+import no.novari.msgraphgateway.services.user.EntraUserSyncService
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.BeforeEach
@@ -46,7 +51,7 @@ class EntraUserSyncServiceTest {
                     republishAll = false,
                 )
 
-            assertEquals(1, published)
+            assertEquals(EntraUserSyncService.UserSyncPageResult(publishedUsers = 1, removedUsers = 0), published)
             verify(exactly = 1) { userRepository.batchUpsertReturningChanged(match { it.size == 2 }) }
             verify(exactly = 0) { userRepository.batchUpsert(any()) }
             coVerify(exactly = 1) { producer.publish(any()) }
@@ -67,7 +72,7 @@ class EntraUserSyncServiceTest {
                     republishAll = true,
                 )
 
-            assertEquals(2, published)
+            assertEquals(EntraUserSyncService.UserSyncPageResult(publishedUsers = 2, removedUsers = 0), published)
             verify(exactly = 1) { userRepository.batchUpsert(match { it.size == 2 }) }
             verify(exactly = 0) { userRepository.batchUpsertReturningChanged(any()) }
             coVerify(exactly = 2) { producer.publish(any()) }
@@ -99,7 +104,7 @@ class EntraUserSyncServiceTest {
                     republishAll = true,
                 )
 
-            assertEquals(2, published)
+            assertEquals(EntraUserSyncService.UserSyncPageResult(publishedUsers = 2, removedUsers = 0), published)
             verify(exactly = 1) {
                 userRepository.batchUpsert(
                     match {
@@ -193,10 +198,58 @@ class EntraUserSyncServiceTest {
             )
     }
 
+    @Test
+    fun `processPage returns removed count per page and total can be accumulated`() =
+        runTest {
+            coEvery { userRepository.existsById(any()) } returns true
+            coEvery { userRepository.incrementNotSeenCount(any()) } just Runs
+
+            val notSeenIncremented = mutableSetOf<UUID>()
+
+            val page1 = removedUsers(3)
+            val page2 = removedUsers(4)
+            val page3 = removedUsers(5)
+
+            val result1 = service.processPage(page1, notSeenIncremented, republishAll = false)
+            val result2 = service.processPage(page2, notSeenIncremented, republishAll = false)
+            val result3 = service.processPage(page3, notSeenIncremented, republishAll = false)
+
+            assertEquals(3, result1.removedUsers)
+            assertEquals(4, result2.removedUsers)
+            assertEquals(5, result3.removedUsers)
+
+            val totalRemoved =
+                result1.removedUsers +
+                    result2.removedUsers +
+                    result3.removedUsers
+
+            assertEquals(12, totalRemoved)
+
+            assertEquals(0, result1.publishedUsers)
+            assertEquals(0, result2.publishedUsers)
+            assertEquals(0, result3.publishedUsers)
+
+            coVerify(exactly = 12) {
+                userRepository.existsById(any())
+            }
+
+            coVerify(exactly = 12) {
+                userRepository.incrementNotSeenCount(any())
+            }
+        }
+
     @AfterEach
     fun tearDown() {
         clearAllMocks()
     }
+
+    private fun removedUsers(count: Int): List<User> =
+        (1..count).map {
+            User().apply {
+                id = UUID.randomUUID().toString()
+                additionalData["@removed"] = mapOf<String, Any>()
+            }
+        }
 
     private fun memberUser(
         id: UUID,

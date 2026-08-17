@@ -3,6 +3,7 @@ package no.novari.msgraphgateway.membership.device
 import com.microsoft.graph.core.content.BatchRequestContent
 import com.microsoft.graph.core.content.BatchResponseContent
 import com.microsoft.graph.core.requests.BatchRequestBuilder
+import com.microsoft.graph.models.ReferenceCreate
 import com.microsoft.graph.serviceclient.GraphServiceClient
 import com.microsoft.kiota.HttpMethod
 import com.microsoft.kiota.RequestAdapter
@@ -12,6 +13,14 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
+import no.novari.msgraphgateway.dto.EntraDeviceMembershipDto
+import no.novari.msgraphgateway.entra.EntraStatus
+import no.novari.msgraphgateway.kafka.OperationType
+import no.novari.msgraphgateway.kafka.membership.EntraMembershipProducer
+import no.novari.msgraphgateway.repository.device.DeviceMembershipEntity
+import no.novari.msgraphgateway.repository.device.DeviceMembershipEntityRepository
+import no.novari.msgraphgateway.repository.device.DeviceMembershipId
+import no.novari.msgraphgateway.services.member.MembershipService
 import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.Response
@@ -51,7 +60,7 @@ class MembershipServiceTest {
         verify(exactly = 1) {
             entraMembershipProducer.publish(
                 messageKey,
-                EntraDeviceMembership(
+                EntraDeviceMembershipDto(
                     code = EntraStatus.ERROR,
                     entraGroupRef = membership.entraGroupRef,
                     entraDeviceRef = membership.entraDeviceRef,
@@ -101,7 +110,7 @@ class MembershipServiceTest {
         verify(exactly = 1) {
             entraMembershipProducer.publish(
                 "duplicate-add",
-                EntraDeviceMembership(
+                EntraDeviceMembershipDto(
                     code = EntraStatus.NO_CHANGES,
                     entraGroupRef = groupRef.toString(),
                     entraDeviceRef = deviceRef.toString(),
@@ -134,13 +143,47 @@ class MembershipServiceTest {
         verify(exactly = 1) {
             entraMembershipProducer.publish(
                 "graph-status",
-                EntraDeviceMembership(
+                EntraDeviceMembershipDto(
                     code = testCase.expectedPublishedStatus,
                     entraGroupRef = groupRef.toString(),
                     entraDeviceRef = deviceRef.toString(),
                 ),
             )
         }
+    }
+
+    @Test
+    fun processKontrollMembershipBatchBuildsAddReferenceFromGraphClientBaseUrl() {
+        val deviceRef = UUID.randomUUID()
+        val groupRef = UUID.randomUUID()
+        val referenceCreateSlot = slot<ReferenceCreate>()
+        val membership =
+            DeviceResourceGroupMembership(
+                operation = OperationType.ADD,
+                entraGroupRef = groupRef.toString(),
+                entraDeviceRef = deviceRef.toString(),
+            )
+
+        every {
+            graphServiceClient
+                .groups()
+                .byGroupId(any())
+                .members()
+                .ref()
+                .toPostRequestInformation(capture(referenceCreateSlot))
+        } returns
+            RequestInformation().apply {
+                httpMethod = HttpMethod.POST
+                urlTemplate = "https://graph.microsoft.com/v1.0/groups/group/members/\$ref"
+            }
+        everyGraphBatchResponse(204, null)
+
+        service.processKontrollMembershipBatch(listOf(record("graph-status", membership)))
+
+        assertEquals(
+            "https://graph.microsoft.com/v1.0/directoryObjects/$deviceRef",
+            referenceCreateSlot.captured.odataId,
+        )
     }
 
     @Test
@@ -176,6 +219,7 @@ class MembershipServiceTest {
         every { deviceMembershipEntityRepository.saveAll(any()) } returns Unit
         every { graphServiceClient.requestAdapter } returns requestAdapter
         every { graphServiceClient.batchRequestBuilder } returns batchRequestBuilder
+        every { requestAdapter.baseUrl } returns "https://graph.microsoft.com/v1.0/"
         every { requestAdapter.convertToNativeRequest<Request>(any()) } returns
             Request
                 .Builder()
@@ -215,12 +259,10 @@ class MembershipServiceTest {
                 deviceMembershipEntityRepository = deviceMembershipEntityRepository,
                 properties =
                     DeviceMembershipProcessingProperties(
-                        consumerConcurrency = 1,
                         consumerMaxPollRecords = 100,
                         graphMaxConcurrentCalls = 3,
                         graphBatchSize = 20,
                         resultTopicPartitions = 1,
-                        directoryObjectsBaseUrl = "testUrl",
                     ),
             )
     }

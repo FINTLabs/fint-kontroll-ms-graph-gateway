@@ -1,8 +1,8 @@
 package no.novari.msgraphgateway.controller
 
 import no.fintlabs.util.OnlyDevelopers
-import no.novari.msgraphgateway.service.GroupService
-import no.novari.msgraphgateway.service.UserService
+import no.novari.msgraphgateway.group.MsGraphGroup
+import no.novari.msgraphgateway.services.user.UserService
 import no.novari.msgraphgateway.user.MsGraphUser
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -10,7 +10,6 @@ import org.springframework.web.bind.annotation.*
 
 data class ErrorResponse(
     val error: String,
-    val objectId: String? = null,
 )
 
 data class TriggerResponse(
@@ -20,21 +19,21 @@ data class TriggerResponse(
 @RestController
 @RequestMapping("/api/admin/users")
 class UserController(
-    private val groupService: GroupService,
     private val msGraphUser: MsGraphUser,
     private val userService: UserService,
+    private val msGraphGroup: MsGraphGroup,
 ) {
     @OnlyDevelopers
     @GetMapping("/{objectId}")
     fun getUserWithGroups(
         @PathVariable objectId: String,
     ): ResponseEntity<*> {
-        val dto = groupService.getEntraUserWithGroups(objectId)
+        val dto = msGraphGroup.getEntraUserWithGroups(objectId)
 
         return if (dto.user == null) {
             ResponseEntity
                 .status(HttpStatus.NOT_FOUND)
-                .body(ErrorResponse("User not found", objectId))
+                .body(ErrorResponse("User not found"))
         } else {
             ResponseEntity.ok(dto)
         }

@@ -1,7 +1,7 @@
 package no.novari.msgraphgateway.controller
 
 import no.fintlabs.util.OnlyDevelopers
-import no.novari.msgraphgateway.membership.device.MembershipService
+import no.novari.msgraphgateway.services.member.MembershipService
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.RequestMapping

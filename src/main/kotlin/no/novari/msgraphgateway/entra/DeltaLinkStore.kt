@@ -1,5 +1,6 @@
 package no.novari.msgraphgateway.entra
 
+import no.novari.msgraphgateway.repository.DeltaStateRepository
 import org.springframework.stereotype.Service
 
 @Service

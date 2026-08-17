@@ -11,6 +11,8 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import no.novari.msgraphgateway.config.ConfigDevice
 import no.novari.msgraphgateway.entra.DeltaLinkStore
+import no.novari.msgraphgateway.repository.device.DeviceRepository
+import no.novari.msgraphgateway.services.device.EntraDeviceSyncService
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
@@ -222,9 +224,10 @@ class MsGraphDevice(
             }
 
         log.info(
-            "Full import completed (fetchedTotal={}, publishedChanged={}, publishedDeleted={})",
+            "Full import completed (fetchedTotal={}, publishedChanged={}, totalRemoved={}, publishedDeleted={})",
             result.totalDevicesSeen,
             result.publishedDevices,
+            result.removedDevices,
             deletedDevices,
         )
     }
@@ -294,6 +297,7 @@ class MsGraphDevice(
 
         var totalDevicesFetched = 0
         var totalPublished = 0
+        var totalRemoved = 0
         var pageNo = 0
 
         val seenNextLinks = HashSet<String>()
@@ -317,7 +321,15 @@ class MsGraphDevice(
                         entraDeviceSyncService.processPage(value, notSeenIncremented, republishAll)
                     }
 
-                totalPublished += publishedThisPage
+                log.debug(
+                    "Devices page {} published={} removed={}",
+                    pageNo,
+                    publishedThisPage.publishedDevices,
+                    publishedThisPage.removedDevices,
+                )
+
+                totalPublished += publishedThisPage.publishedDevices
+                totalRemoved += publishedThisPage.removedDevices
             } else {
                 log.debug("Devices page {} fetched=0", pageNo)
                 log.trace(current.toString())
@@ -368,7 +380,7 @@ class MsGraphDevice(
             }
         }
 
-        return PageResult(totalDevicesFetched, totalPublished)
+        return PageResult(totalDevicesFetched, totalPublished, totalRemoved)
     }
 
     private suspend fun <T> callGraph(block: () -> T): T =
@@ -378,7 +390,7 @@ class MsGraphDevice(
             log.error("Graph call failed with error code {}. {}", ae.responseStatusCode, ae.message)
             throw ae
         } catch (e: Exception) {
-            throw if (e is RuntimeException) e else CompletionException(e)
+            throw e as? RuntimeException ?: CompletionException(e)
         }
 
     private fun logElapsed(
@@ -394,6 +406,7 @@ class MsGraphDevice(
     private data class PageResult(
         val totalDevicesSeen: Int,
         val publishedDevices: Int,
+        val removedDevices: Int,
     )
 
     companion object {

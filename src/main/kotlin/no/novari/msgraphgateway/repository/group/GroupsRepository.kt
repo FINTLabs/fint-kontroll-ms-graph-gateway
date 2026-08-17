@@ -1,0 +1,288 @@
+package no.novari.msgraphgateway.repository.group
+
+import no.novari.msgraphgateway.services.Checksum
+import org.springframework.jdbc.core.namedparam.MapSqlParameterSource
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate
+import org.springframework.stereotype.Repository
+import java.sql.Connection
+import java.time.Instant
+import java.time.ZoneOffset
+import java.util.UUID
+
+@Repository
+class GroupRepository(
+    jdbc: NamedParameterJdbcTemplate,
+) : GroupsRepository(jdbc, table = "groups")
+
+open class GroupsRepository(
+    private val jdbc: NamedParameterJdbcTemplate,
+    table: String,
+) : GroupStateRepository {
+    private val findStaleObjectsByIdSql =
+        """
+        SELECT object_id
+        FROM $table
+        WHERE last_seen_at < :cutoff
+        """.trimIndent()
+
+    private val findStaleWithNotSeenCountGreaterThanSql =
+        """
+        SELECT object_id
+        FROM $table
+        WHERE last_seen_at < :cutoff
+          AND not_seen_count > :minNotSeenCount
+        """.trimIndent()
+
+    private val countAllSql =
+        """
+        SELECT COUNT(*) FROM $table
+        """.trimIndent()
+
+    private val deleteByIdSql =
+        """
+        DELETE FROM $table
+        WHERE object_id = :objectId
+        """.trimIndent()
+
+    private val deleteByIdsSql =
+        """
+        DELETE FROM $table
+        WHERE object_id IN (:objectIds)
+        RETURNING object_id, resource_group_id
+        """.trimIndent()
+
+    private val incrementNotSeenCountSql =
+        """
+        UPDATE $table
+        SET not_seen_count = not_seen_count + 1
+        WHERE object_id IN (:objectIds)
+        """.trimIndent()
+
+    private val batchUpsertReturningChangedSql =
+        """
+        WITH input AS (
+          SELECT *
+          FROM unnest(
+            :objectIds::uuid[],
+            :resourceGroupIds::bigint[],
+            :checksums::bytea[],
+            :lastSeenAts::timestamptz[]
+          ) AS t(object_id, resource_group_id, checksum, last_seen_at)
+        ),
+        input_with_old AS (
+          SELECT
+            i.object_id,
+            i.resource_group_id,
+            i.checksum,
+            i.last_seen_at,
+            g.object_id AS old_object_id,
+            g.checksum AS old_checksum
+          FROM input i
+          LEFT JOIN $table g ON g.resource_group_id = i.resource_group_id
+        ),
+        upsert AS (
+          INSERT INTO $table (object_id, resource_group_id, checksum, last_seen_at, not_seen_count)
+          SELECT object_id, resource_group_id, checksum, last_seen_at, 0
+          FROM input_with_old
+          ON CONFLICT (resource_group_id) DO UPDATE
+          SET
+            object_id      = EXCLUDED.object_id,
+            last_seen_at   = EXCLUDED.last_seen_at,
+            checksum       = CASE
+                              WHEN $table.checksum IS DISTINCT FROM EXCLUDED.checksum
+                                OR $table.object_id IS DISTINCT FROM EXCLUDED.object_id
+                              THEN EXCLUDED.checksum
+                              ELSE $table.checksum
+                            END,
+            not_seen_count = 0
+          RETURNING object_id, resource_group_id
+        )
+        SELECT u.object_id
+        FROM input_with_old i
+        JOIN upsert u USING (resource_group_id)
+        WHERE i.old_checksum IS DISTINCT FROM i.checksum
+           OR i.old_object_id IS DISTINCT FROM i.object_id
+        """.trimIndent()
+
+    private val batchUpsertSql =
+        """
+        WITH input AS (
+          SELECT *
+          FROM unnest(
+            :objectIds::uuid[],
+            :resourceGroupIds::bigint[],
+            :checksums::bytea[],
+            :lastSeenAts::timestamptz[]
+          ) AS t(object_id, resource_group_id, checksum, last_seen_at)
+        )
+        INSERT INTO $table (object_id, resource_group_id, checksum, last_seen_at, not_seen_count)
+        SELECT object_id, resource_group_id, checksum, last_seen_at, 0
+        FROM input
+        ON CONFLICT (resource_group_id) DO UPDATE
+        SET
+          object_id = EXCLUDED.object_id,
+          checksum = EXCLUDED.checksum,
+          last_seen_at = EXCLUDED.last_seen_at,
+          not_seen_count = 0
+        """.trimIndent()
+
+    private val existsByIdSql =
+        """
+        SELECT EXISTS (
+          SELECT 1
+          FROM $table
+          WHERE object_id = :objectId
+        )
+        """.trimIndent()
+
+    private val findChecksumByIdSql =
+        """
+        SELECT checksum
+        FROM $table
+        WHERE object_id = :objectId
+        """.trimIndent()
+
+    private val findObjectIdByResourceGroupIdSql =
+        """
+        SELECT object_id
+        FROM $table
+        WHERE resource_group_id = :resourceGroupId
+        """.trimIndent()
+
+    private val findResourceGroupIdByObjectIdSql =
+        """
+        SELECT resource_group_id
+        FROM $table
+        WHERE object_id = :objectId
+        """.trimIndent()
+
+    override fun findStaleObjectIds(cutoff: Instant): List<UUID> {
+        val params =
+            MapSqlParameterSource()
+                .addValue("cutoff", cutoff.atOffset(ZoneOffset.UTC))
+
+        return jdbc.query(findStaleObjectsByIdSql, params) { rs, _ ->
+            rs.getObject("object_id", UUID::class.java)
+        }
+    }
+
+    override fun findStaleObjectIdsWithNotSeenCountGreaterThan(
+        cutoff: Instant,
+        minNotSeenCount: Int,
+    ): List<UUID> {
+        val params =
+            MapSqlParameterSource()
+                .addValue("cutoff", cutoff.atOffset(ZoneOffset.UTC))
+                .addValue("minNotSeenCount", minNotSeenCount)
+
+        return jdbc.query(findStaleWithNotSeenCountGreaterThanSql, params) { rs, _ ->
+            rs.getObject("object_id", UUID::class.java)
+        }
+    }
+
+    override fun batchUpsertReturningChanged(rows: List<GroupStateRepository.UpsertRow>): Set<UUID> {
+        if (rows.isEmpty()) return emptySet()
+
+        val objectIds = rows.map { it.objectId }.toTypedArray()
+        val resourceGroupIds = rows.map { it.resourceGroupId }.toTypedArray()
+        val checksums = rows.map { it.checksum.bytes }.toTypedArray()
+        val lastSeenAts = rows.map { it.lastSeenAt }.toTypedArray()
+
+        return jdbc.jdbcTemplate.execute { conn: Connection ->
+            val params =
+                MapSqlParameterSource()
+                    .addValue("objectIds", conn.createArrayOf("uuid", objectIds))
+                    .addValue("resourceGroupIds", conn.createArrayOf("int8", resourceGroupIds))
+                    .addValue("checksums", conn.createArrayOf("bytea", checksums))
+                    .addValue("lastSeenAts", conn.createArrayOf("timestamptz", lastSeenAts))
+
+            jdbc
+                .query(batchUpsertReturningChangedSql, params) { rs, _ ->
+                    rs.getObject("object_id", UUID::class.java)
+                }.toSet()
+        } ?: emptySet()
+    }
+
+    override fun batchUpsert(rows: List<GroupStateRepository.UpsertRow>) {
+        if (rows.isEmpty()) return
+
+        val objectIds = rows.map { it.objectId }.toTypedArray()
+        val resourceGroupIds = rows.map { it.resourceGroupId }.toTypedArray()
+        val checksums = rows.map { it.checksum.bytes }.toTypedArray()
+        val lastSeenAts = rows.map { it.lastSeenAt }.toTypedArray()
+
+        jdbc.jdbcTemplate.execute { conn: Connection ->
+            val params =
+                MapSqlParameterSource()
+                    .addValue("objectIds", conn.createArrayOf("uuid", objectIds))
+                    .addValue("resourceGroupIds", conn.createArrayOf("int8", resourceGroupIds))
+                    .addValue("checksums", conn.createArrayOf("bytea", checksums))
+                    .addValue("lastSeenAts", conn.createArrayOf("timestamptz", lastSeenAts))
+
+            jdbc.update(batchUpsertSql, params)
+        }
+    }
+
+    override fun deleteById(objectId: UUID) {
+        jdbc.update(deleteByIdSql, MapSqlParameterSource().addValue("objectId", objectId))
+    }
+
+    override fun deleteByIdsReturningRows(objectIds: Collection<UUID>): List<GroupStateRepository.DeletedRow> {
+        if (objectIds.isEmpty()) return emptyList()
+
+        val params =
+            MapSqlParameterSource()
+                .addValue("objectIds", objectIds)
+
+        return jdbc.query(deleteByIdsSql, params) { rs, _ ->
+            GroupStateRepository.DeletedRow(
+                objectId = rs.getObject("object_id", UUID::class.java),
+                resourceGroupId = rs.getLong("resource_group_id"),
+            )
+        }
+    }
+
+    override fun incrementNotSeenCount(objectIds: Collection<UUID>) {
+        if (objectIds.isEmpty()) return
+
+        jdbc.update(
+            incrementNotSeenCountSql,
+            MapSqlParameterSource().addValue("objectIds", objectIds),
+        )
+    }
+
+    override fun getCount(): Int = jdbc.queryForObject(countAllSql, MapSqlParameterSource(), Int::class.java) ?: 0
+
+    override fun existsById(objectId: UUID): Boolean {
+        val params = MapSqlParameterSource().addValue("objectId", objectId)
+
+        return jdbc.queryForObject(existsByIdSql, params, Boolean::class.java) ?: false
+    }
+
+    override fun findChecksumById(objectId: UUID): Checksum? {
+        val params = MapSqlParameterSource().addValue("objectId", objectId)
+
+        return jdbc
+            .query(findChecksumByIdSql, params) { rs, _ ->
+                Checksum(rs.getBytes("checksum"))
+            }.firstOrNull()
+    }
+
+    override fun findObjectIdByResourceGroupId(resourceGroupId: Long): UUID? {
+        val params = MapSqlParameterSource().addValue("resourceGroupId", resourceGroupId)
+
+        return jdbc
+            .query(findObjectIdByResourceGroupIdSql, params) { rs, _ ->
+                rs.getObject("object_id", UUID::class.java)
+            }.firstOrNull()
+    }
+
+    override fun findResourceGroupIdByObjectId(objectId: UUID): Long? {
+        val params = MapSqlParameterSource().addValue("objectId", objectId)
+
+        return jdbc
+            .query(findResourceGroupIdByObjectIdSql, params) { rs, _ ->
+                rs.getLong("resource_group_id")
+            }.firstOrNull()
+    }
+}

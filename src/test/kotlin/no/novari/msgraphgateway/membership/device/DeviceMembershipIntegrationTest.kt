@@ -14,6 +14,8 @@ import com.microsoft.kiota.serialization.SerializationWriterFactory
 import io.mockk.every
 import io.mockk.mockk
 import no.novari.msgraphgateway.Application
+import no.novari.msgraphgateway.entra.EntraStatus
+import no.novari.msgraphgateway.kafka.OperationType
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Protocol
 import okhttp3.Request
