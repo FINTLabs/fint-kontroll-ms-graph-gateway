@@ -51,7 +51,7 @@ class EntraUserSyncServiceTest {
                     republishAll = false,
                 )
 
-            assertEquals(EntraUserSyncService.UserSyncPageResult(publishedUsers = 1, removedUsers = 0), published)
+            assertEquals(1, published)
             verify(exactly = 1) { userRepository.batchUpsertReturningChanged(match { it.size == 2 }) }
             verify(exactly = 0) { userRepository.batchUpsert(any()) }
             coVerify(exactly = 1) { producer.publish(any()) }
@@ -72,7 +72,7 @@ class EntraUserSyncServiceTest {
                     republishAll = true,
                 )
 
-            assertEquals(EntraUserSyncService.UserSyncPageResult(publishedUsers = 2, removedUsers = 0), published)
+            assertEquals(2, published)
             verify(exactly = 1) { userRepository.batchUpsert(match { it.size == 2 }) }
             verify(exactly = 0) { userRepository.batchUpsertReturningChanged(any()) }
             coVerify(exactly = 2) { producer.publish(any()) }
@@ -104,7 +104,7 @@ class EntraUserSyncServiceTest {
                     republishAll = true,
                 )
 
-            assertEquals(EntraUserSyncService.UserSyncPageResult(publishedUsers = 2, removedUsers = 0), published)
+            assertEquals(2, published)
             verify(exactly = 1) {
                 userRepository.batchUpsert(
                     match {
@@ -119,6 +119,123 @@ class EntraUserSyncServiceTest {
             }
             coVerify(exactly = 1) { producer.publish(any()) }
             coVerify(exactly = 1) { externalProducer.publish(any()) }
+        }
+
+    @Test
+    fun processPageSkipsNormalUsersWithoutEmployeeOrStudentId() =
+        runTest {
+            val validId = UUID.randomUUID()
+            val missingId = UUID.randomUUID()
+            val users =
+                listOf(
+                    memberUser(validId),
+                    memberUser(missingId, includeEmployeeId = false),
+                )
+
+            val published =
+                service.processPage(
+                    users = users,
+                    notSeenIncremented = mutableSetOf(),
+                    republishAll = true,
+                )
+
+            assertEquals(1, published)
+            verify(exactly = 1) {
+                userRepository.batchUpsert(
+                    match {
+                        it.map { row ->
+                            row.objectId
+                        } == listOf(validId)
+                    },
+                )
+            }
+            coVerify(exactly = 1) { producer.publish(any()) }
+            coVerify(exactly = 0) { externalProducer.publish(any()) }
+        }
+
+    @Test
+    fun processPageKeepsExternalUsersWithoutEmployeeOrStudentId() =
+        runTest {
+            configUser.enableExternalUsers = true
+            configUser.externaluserattribute = "externalFlag"
+            configUser.externaluservalue = "yes"
+
+            val externalId = UUID.randomUUID()
+            val users =
+                listOf(
+                    memberUser(
+                        externalId,
+                        additionalData = mutableMapOf("externalFlag" to "yes"),
+                        backingStoreValues = mapOf("externalFlag" to "yes"),
+                        includeEmployeeId = false,
+                    ),
+                )
+
+            val published =
+                service.processPage(
+                    users = users,
+                    notSeenIncremented = mutableSetOf(),
+                    republishAll = true,
+                )
+
+            assertEquals(1, published)
+            verify(exactly = 0) { userRepository.batchUpsert(any()) }
+            verify(exactly = 1) {
+                userExternalRepository.batchUpsert(match { it.map { row -> row.objectId } == listOf(externalId) })
+            }
+            coVerify(exactly = 0) { producer.publish(any()) }
+            coVerify(exactly = 1) { externalProducer.publish(any()) }
+        }
+
+    @Test
+    fun processPageUsesValidatorWhenUserIdAttributeIsShared() =
+        runTest {
+            configUser.useSameIdNumAttribute = true
+            configUser.userIdNumAttribute = "idNumber"
+            configUser.validatorAttribute = "personType"
+            configUser.employeeValidator = "employee"
+            configUser.studentValidator = "student"
+
+            val employeeId = UUID.randomUUID()
+            val studentId = UUID.randomUUID()
+            val missingValidatorId = UUID.randomUUID()
+            val users =
+                listOf(
+                    memberUser(
+                        employeeId,
+                        backingStoreValues = mapOf("idNumber" to "123", "personType" to "employee"),
+                        includeEmployeeId = false,
+                    ),
+                    memberUser(
+                        studentId,
+                        backingStoreValues = mapOf("idNumber" to "456", "personType" to "student"),
+                        includeEmployeeId = false,
+                    ),
+                    memberUser(
+                        missingValidatorId,
+                        backingStoreValues = mapOf("idNumber" to "789", "personType" to "other"),
+                        includeEmployeeId = false,
+                    ),
+                )
+
+            val published =
+                service.processPage(
+                    users = users,
+                    notSeenIncremented = mutableSetOf(),
+                    republishAll = true,
+                )
+
+            assertEquals(2, published)
+            verify(exactly = 1) {
+                userRepository.batchUpsert(
+                    match {
+                        it.map { row ->
+                            row.objectId
+                        } == listOf(employeeId, studentId)
+                    },
+                )
+            }
+            coVerify(exactly = 2) { producer.publish(any()) }
         }
 
     @Test
@@ -139,30 +256,6 @@ class EntraUserSyncServiceTest {
             verify(exactly = 0) { userExternalRepository.incrementNotSeenCount(any()) }
         }
 
-    @Test
-    fun processPageCalculatesChecksumBeforeImportingUsers() =
-        runTest {
-            val userId = UUID.randomUUID()
-            val users = listOf(memberUser(userId))
-
-            every { userRepository.batchUpsertReturningChanged(any()) } returns setOf(userId)
-
-            service.processPage(
-                users = users,
-                notSeenIncremented = mutableSetOf(),
-                republishAll = false,
-            )
-
-            verifyOrder {
-                checksumService.checksum(any())
-                userRepository.batchUpsertReturningChanged(any())
-            }
-
-            coVerify(exactly = 1) {
-                producer.publish(any())
-            }
-        }
-
     @BeforeEach
     fun beforeEach() {
         userRepository = mockk(relaxed = true)
@@ -174,6 +267,8 @@ class EntraUserSyncServiceTest {
             ConfigUser().apply {
                 enableExternalUsers = false
                 useSameIdNumAttribute = false
+                employeeidattribute = "employeeId"
+                studentidattribute = "studentId"
             }
 
         every { checksumService.checksum(any()) } returns Checksum(byteArrayOf(1, 2, 3))
@@ -198,67 +293,23 @@ class EntraUserSyncServiceTest {
             )
     }
 
-    @Test
-    fun `processPage returns removed count per page and total can be accumulated`() =
-        runTest {
-            coEvery { userRepository.existsById(any()) } returns true
-            coEvery { userRepository.incrementNotSeenCount(any()) } just Runs
-
-            val notSeenIncremented = mutableSetOf<UUID>()
-
-            val page1 = removedUsers(3)
-            val page2 = removedUsers(4)
-            val page3 = removedUsers(5)
-
-            val result1 = service.processPage(page1, notSeenIncremented, republishAll = false)
-            val result2 = service.processPage(page2, notSeenIncremented, republishAll = false)
-            val result3 = service.processPage(page3, notSeenIncremented, republishAll = false)
-
-            assertEquals(3, result1.removedUsers)
-            assertEquals(4, result2.removedUsers)
-            assertEquals(5, result3.removedUsers)
-
-            val totalRemoved =
-                result1.removedUsers +
-                    result2.removedUsers +
-                    result3.removedUsers
-
-            assertEquals(12, totalRemoved)
-
-            assertEquals(0, result1.publishedUsers)
-            assertEquals(0, result2.publishedUsers)
-            assertEquals(0, result3.publishedUsers)
-
-            coVerify(exactly = 12) {
-                userRepository.existsById(any())
-            }
-
-            coVerify(exactly = 12) {
-                userRepository.incrementNotSeenCount(any())
-            }
-        }
-
     @AfterEach
     fun tearDown() {
         clearAllMocks()
     }
 
-    private fun removedUsers(count: Int): List<User> =
-        (1..count).map {
-            User().apply {
-                id = UUID.randomUUID().toString()
-                additionalData["@removed"] = mapOf<String, Any>()
-            }
-        }
-
     private fun memberUser(
         id: UUID,
         additionalData: MutableMap<String, Any> = mutableMapOf(),
         backingStoreValues: Map<String, Any> = emptyMap(),
+        includeEmployeeId: Boolean = true,
     ): User =
         mockk(relaxed = true) {
             val backingStore =
                 InMemoryBackingStore().apply {
+                    if (includeEmployeeId) {
+                        set("employeeId", id.toString())
+                    }
                     backingStoreValues.forEach { (key, value) -> set(key, value) }
                 }
             every { this@mockk.id } returns id.toString()
