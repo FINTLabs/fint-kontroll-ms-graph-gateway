@@ -62,11 +62,12 @@ abstract class AbstractMembershipService<M : Any, ID : Any, E : Any>(
             val operation = operationOf(validatedMembership.membership)
 
             if (MembershipStatusResolver.shouldSkipOperation(existing?.let(::statusOf), operation)) {
-                resultsToPublish += MembershipResult(
-                    messageKey = validatedMembership.messageKey,
-                    membership = validatedMembership.membership,
-                    status = EntraStatus.NO_CHANGES,
-                )
+                resultsToPublish +=
+                    MembershipResult(
+                        messageKey = validatedMembership.messageKey,
+                        membership = validatedMembership.membership,
+                        status = EntraStatus.NO_CHANGES,
+                    )
 
                 log.debug(
                     "Skipped duplicate membership operation {} for {} {} and group {}",
@@ -76,12 +77,13 @@ abstract class AbstractMembershipService<M : Any, ID : Any, E : Any>(
                     groupIdOf(validatedMembership.membership),
                 )
             } else {
-                pendingMemberships += PendingMembership(
-                    messageKey = validatedMembership.messageKey,
-                    membership = validatedMembership.membership,
-                    membershipId = validatedMembership.membershipId,
-                    existing = existing,
-                )
+                pendingMemberships +=
+                    PendingMembership(
+                        messageKey = validatedMembership.messageKey,
+                        membership = validatedMembership.membership,
+                        membershipId = validatedMembership.membershipId,
+                        existing = existing,
+                    )
             }
         }
 
@@ -89,16 +91,18 @@ abstract class AbstractMembershipService<M : Any, ID : Any, E : Any>(
             val operation = operationOf(result.pending.membership)
             val persistedStatus = MembershipStatusResolver.persistedStatus(operation, result.status)
 
-            statesToSave += buildMembershipState(
-                result.pending.membershipId,
-                result.pending.existing,
-                persistedStatus,
-            )
-            resultsToPublish += MembershipResult(
-                messageKey = result.pending.messageKey,
-                membership = result.pending.membership,
-                status = result.status,
-            )
+            statesToSave +=
+                buildMembershipState(
+                    result.pending.membershipId,
+                    result.pending.existing,
+                    persistedStatus,
+                )
+            resultsToPublish +=
+                MembershipResult(
+                    messageKey = result.pending.messageKey,
+                    membership = result.pending.membership,
+                    status = result.status,
+                )
         }
 
         if (statesToSave.isNotEmpty()) {
@@ -421,15 +425,35 @@ abstract class AbstractMembershipService<M : Any, ID : Any, E : Any>(
 
     protected abstract val memberType: String
     protected abstract val memberTypeForLog: String
+
     protected abstract fun operationOf(membership: M): OperationType
+
     protected abstract fun groupIdOf(membership: M): String
+
     protected abstract fun memberIdOf(membership: M): String
-    protected abstract fun membershipIdOf(memberId: UUID, groupId: UUID): ID
+
+    protected abstract fun membershipIdOf(
+        memberId: UUID,
+        groupId: UUID,
+    ): ID
+
     protected abstract fun findExistingMemberships(ids: Collection<ID>): Map<ID, E>
+
     protected abstract fun statusOf(existing: E): EntraStatus
-    protected abstract fun buildMembershipState(id: ID, existing: E?, status: EntraStatus): E
+
+    protected abstract fun buildMembershipState(
+        id: ID,
+        existing: E?,
+        status: EntraStatus,
+    ): E
+
     protected abstract fun saveMembershipStates(states: Collection<E>)
-    protected abstract fun publishResult(messageKey: String, membership: M, status: EntraStatus)
+
+    protected abstract fun publishResult(
+        messageKey: String,
+        membership: M,
+        status: EntraStatus,
+    )
 
     private fun publishResult(result: MembershipResult<M>) {
         publishResult(result.messageKey, result.membership, result.status)
