@@ -65,6 +65,7 @@ class MembershipConsumerTest {
                 capture(batchListener),
                 any<ListenerConfiguration>(),
                 errorHandler,
+                any(),
             )
         } returns listenerFactory
         every { listenerFactory.createContainer(any<EventTopicNameParameters>()) } returns container
