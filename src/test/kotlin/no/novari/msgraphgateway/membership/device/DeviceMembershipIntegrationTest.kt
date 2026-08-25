@@ -114,7 +114,7 @@ class DeviceMembershipIntegrationTest {
         assertEquals(
             PERFORMANCE_TEST_MESSAGE_COUNT,
             consumedResults,
-            "Expected every consumed membership event to produce one entra-device-group-membership result within $PERFORMANCE_TEST_TIMEOUT",
+            "Expected every consumed membership event to produce one graph-device-group-membership result within $PERFORMANCE_TEST_TIMEOUT",
         )
         assertTrue(
             graphCallCounter.get() > 0,
@@ -616,7 +616,7 @@ class DeviceMembershipIntegrationTest {
         private val CORRECTNESS_TEST_TIMEOUT: Duration = Duration.ofMinutes(4)
         private val PERFORMANCE_TEST_TIMEOUT: Duration = Duration.ofMinutes(10)
         private const val INPUT_TOPIC = "fintlabs-no.kontroll.event.resource-group-membership-device"
-        private const val RESULT_TOPIC = "fintlabs-no.kontroll.event.entra-device-group-membership"
+        private const val RESULT_TOPIC = "fintlabs-no.kontroll.event.graph-device-group-membership"
 
         @Container
         @JvmStatic

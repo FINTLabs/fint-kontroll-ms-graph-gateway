@@ -62,6 +62,13 @@ abstract class AbstractMembershipService<M : Any, ID : Any, E : Any>(
             val operation = operationOf(validatedMembership.membership)
 
             if (MembershipStatusResolver.shouldSkipOperation(existing?.let(::statusOf), operation)) {
+                val persistedStatus = MembershipStatusResolver.persistedStatus(operation, EntraStatus.NO_CHANGES)
+                statesToSave +=
+                    buildMembershipState(
+                        validatedMembership.membershipId,
+                        existing,
+                        persistedStatus,
+                    )
                 resultsToPublish +=
                     MembershipResult(
                         messageKey = validatedMembership.messageKey,

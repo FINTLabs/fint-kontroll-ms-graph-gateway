@@ -87,17 +87,22 @@ class UserMembershipServiceTest {
                 lastUpdatedAt = OffsetDateTime.parse("2026-04-29T10:00:00Z"),
             )
         val membershipId = UserMembershipId(userRef, groupRef)
+        val savedSlot = slot<Collection<UserMembershipEntity>>()
 
         every {
             userMembershipEntityRepository.findAllByIds(listOf(membershipId))
         } returns mapOf(membershipId to existing)
+        every { userMembershipEntityRepository.saveAll(capture(savedSlot)) } returns Unit
 
         service.processKontrollMembershipBatch(listOf(record("duplicate-add", membership)))
 
+        assertEquals(1, savedSlot.captured.size)
+        assertEquals(EntraStatus.ADDED, savedSlot.captured.single().status)
+        assertEquals(existing.createdAt, savedSlot.captured.single().createdAt)
         verify(exactly = 1) {
             userMembershipEntityRepository.findAllByIds(listOf(membershipId))
         }
-        verify(exactly = 0) { userMembershipEntityRepository.saveAll(any()) }
+        verify(exactly = 1) { userMembershipEntityRepository.saveAll(any()) }
         verify(exactly = 1) {
             entraUserMembershipProducer.publish(
                 "duplicate-add",

@@ -28,7 +28,7 @@ class EntraDeviceMembershipProducer(
     private val nameParams: EventTopicNameParameters =
         EventTopicNameParameters
             .builder()
-            .eventName("entra-device-group-membership")
+            .eventName("graph-device-group-membership")
             .topicNamePrefixParameters(
                 TopicNamePrefixParameters
                     .stepBuilder()
@@ -48,7 +48,7 @@ class EntraDeviceMembershipProducer(
                 .cleanupFrequency(EventCleanupFrequency.NORMAL)
                 .build(),
         )
-        log.info("Initialized topic entra-device-group-membership with {} partitions", properties.resultTopicPartitions)
+        log.info("Initialized topic graph-device-group-membership with {} partitions", properties.resultTopicPartitions)
     }
 
     fun publish(
@@ -64,7 +64,7 @@ class EntraDeviceMembershipProducer(
                 .build()
 
         template.send(record)
-        log.info("Published entra-device-group-membership for messageKey: {}", messageKey)
+        log.info("Published graph-device-group-membership for messageKey: {}", messageKey)
     }
 
     companion object {
