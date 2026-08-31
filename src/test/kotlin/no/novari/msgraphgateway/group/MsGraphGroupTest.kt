@@ -11,6 +11,7 @@ import kotlinx.coroutines.test.runTest
 import no.novari.msgraphgateway.config.ConfigGroup
 import no.novari.msgraphgateway.config.ConfigUser
 import no.novari.msgraphgateway.entra.DeltaLinkStore
+import no.novari.msgraphgateway.services.group.EntraGroupMembershipSyncService
 import no.novari.msgraphgateway.services.group.EntraGroupSyncService
 import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
@@ -22,6 +23,7 @@ class MsGraphGroupTest {
     private val configUser = mockk<ConfigUser>()
     private val graphServiceClient = mockk<GraphServiceClient>(relaxed = true)
     private val groupSyncService = mockk<EntraGroupSyncService>()
+    private val groupMembershipSyncService = mockk<EntraGroupMembershipSyncService>(relaxed = true)
     private val deltaLinkStore = mockk<DeltaLinkStore>()
 
     @Test
@@ -37,6 +39,7 @@ class MsGraphGroupTest {
                 configGroup = localConfigGroup,
                 graphServiceClient = graphServiceClient,
                 groupSyncService = groupSyncService,
+                groupMembershipSyncService = groupMembershipSyncService,
                 deltaLinkStore = deltaLinkStore,
                 configUser = localConfigUser,
             )
@@ -102,6 +105,7 @@ class MsGraphGroupTest {
                 configGroup = localConfigGroup,
                 graphServiceClient = graphServiceClient,
                 groupSyncService = groupSyncService,
+                groupMembershipSyncService = groupMembershipSyncService,
                 deltaLinkStore = deltaLinkStore,
                 configUser = ConfigUser(),
             )
@@ -160,22 +164,45 @@ class MsGraphGroupTest {
     @Test
     fun `startFullImport finishes full import cleanup after paging`() =
         runTest {
-            val response =
+            val latestResponse =
+                DeltaGetResponse().apply {
+                    value = emptyList()
+                    odataDeltaLink = "bootstrap-delta-link"
+                }
+            val catchUpResponse =
                 DeltaGetResponse().apply {
                     value = emptyList()
                     odataDeltaLink = "new-delta-link"
                 }
+            val groupListResponse = GroupCollectionResponse().apply { value = emptyList() }
 
             every { configGroup.getGroupAttributesNotMembers() } returns arrayOf("id", "displayName")
             every { configGroup.groupPagingSize } returns 999
 
             every {
-                graphServiceClient.groups().delta().get(any())
-            } returns response
+                graphServiceClient
+                    .groups()
+                    .delta()
+                    .withUrl(match { it.contains("deltatoken=latest") })
+                    .get()
+            } returns latestResponse
+            every {
+                graphServiceClient.groups().get(any())
+            } returns groupListResponse
+            every {
+                graphServiceClient
+                    .groups()
+                    .delta()
+                    .withUrl("bootstrap-delta-link")
+                    .get()
+            } returns catchUpResponse
 
             coEvery {
-                deltaLinkStore.createOrUpdate("groups", "new-delta-link")
+                deltaLinkStore.createOrUpdate("groups-with-members", "new-delta-link")
             } just Runs
+            coEvery {
+                groupSyncService.processPage(any(), any(), false)
+            } returns 0
 
             val cutoffSlot = slot<Instant>()
             val markNotSeenCutoffSlot = slot<Instant>()
@@ -193,6 +220,7 @@ class MsGraphGroupTest {
                     configGroup = configGroup,
                     graphServiceClient = graphServiceClient,
                     groupSyncService = groupSyncService,
+                    groupMembershipSyncService = groupMembershipSyncService,
                     deltaLinkStore = deltaLinkStore,
                     configUser = configUser,
                 )
@@ -214,6 +242,7 @@ class MsGraphGroupTest {
             coVerifyOrder {
                 groupSyncService.markNotSeenGroups(any(), any())
                 groupSyncService.finishFullImport(any())
+                deltaLinkStore.createOrUpdate("groups-with-members", "new-delta-link")
             }
 
             assertTrue(markNotSeenCutoffSlot.captured >= before)
@@ -232,6 +261,7 @@ class MsGraphGroupTest {
                         configGroup = configGroup,
                         graphServiceClient = graphServiceClient,
                         groupSyncService = groupSyncService,
+                        groupMembershipSyncService = groupMembershipSyncService,
                         deltaLinkStore = deltaLinkStore,
                         configUser = configUser,
                     ),

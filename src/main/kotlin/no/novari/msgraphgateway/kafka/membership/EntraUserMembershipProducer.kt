@@ -64,7 +64,7 @@ class EntraUserMembershipProducer(
                 .build()
 
         template.send(record)
-        log.info("Published graph-user-group-membership for messageKey: {}", messageKey)
+        log.debug("Published graph-user-group-membership for messageKey: {}", messageKey)
     }
 
     companion object {

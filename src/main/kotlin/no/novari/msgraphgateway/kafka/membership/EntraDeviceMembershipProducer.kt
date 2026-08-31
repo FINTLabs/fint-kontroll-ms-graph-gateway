@@ -64,7 +64,7 @@ class EntraDeviceMembershipProducer(
                 .build()
 
         template.send(record)
-        log.info("Published graph-device-group-membership for messageKey: {}", messageKey)
+        log.debug("Published graph-device-group-membership for messageKey: {}", messageKey)
     }
 
     companion object {

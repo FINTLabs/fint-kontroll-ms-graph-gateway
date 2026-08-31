@@ -12,6 +12,18 @@ import java.util.UUID
 class UserMembershipEntityRepository(
     private val jdbcTemplate: JdbcTemplate,
 ) {
+    fun findAllByGroupRef(groupRef: UUID): Map<UserMembershipId, UserMembershipEntity> =
+        jdbcTemplate
+            .query(
+                """
+                SELECT user_ref, group_ref, status, created_at, last_updated_at
+                FROM user_memberships
+                WHERE group_ref = ?::uuid
+                """.trimIndent(),
+                rowMapper,
+                groupRef,
+            ).associateBy { it.id }
+
     fun findAllByIds(ids: Collection<UserMembershipId>): Map<UserMembershipId, UserMembershipEntity> {
         if (ids.isEmpty()) {
             return emptyMap()
@@ -61,6 +73,24 @@ class UserMembershipEntityRepository(
             ps.setObject(4, membership.createdAt)
             ps.setObject(5, membership.lastUpdatedAt)
         }
+    }
+
+    @Transactional
+    fun replaceGroupMemberships(
+        groupRef: UUID,
+        userRefs: Collection<UUID>,
+        updatedAt: OffsetDateTime,
+    ) {
+        saveAll(
+            userRefs.distinct().map { userRef ->
+                UserMembershipEntity(
+                    id = UserMembershipId(userRef, groupRef),
+                    status = EntraStatus.ADDED,
+                    createdAt = updatedAt,
+                    lastUpdatedAt = updatedAt,
+                )
+            },
+        )
     }
 
     @Transactional
