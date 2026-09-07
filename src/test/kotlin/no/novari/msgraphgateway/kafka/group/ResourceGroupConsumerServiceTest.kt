@@ -30,6 +30,7 @@ class ResourceGroupConsumerServiceTest {
 
     @BeforeEach
     fun setUp() {
+        every { entraGroupCommandService.findGroupIdByResourceGroupId(any()) } returns null
         every { entraGroupStateService.findObjectIdByResourceGroupId(any()) } returns null
         every { entraGroupStateService.findResourceGroupIdByObjectId(any()) } returns null
         every { entraGroupStateService.isUnchanged(any()) } returns false
@@ -262,6 +263,31 @@ class ResourceGroupConsumerServiceTest {
         verify(exactly = 0) {
             entraGroupStateService.storeAndPublishIfChanged(any(), any(), any())
         }
+    }
+
+    @Test
+    fun `process rejects update when an Entra group outside local state already has the resource id`() {
+        val groupId = "11111111-1111-1111-1111-111111111111"
+        every { configGroup.allowGroupUpdate } returns true
+        every { entraGroupCommandService.findGroupIdByResourceGroupId("12345") } returns
+            "22222222-2222-2222-2222-222222222222"
+
+        service.process(updateResourceGroup(groupObjectId = groupId), "trace-conflict")
+
+        verify(exactly = 1) { entraGroupCommandService.findGroupIdByResourceGroupId("12345") }
+        verify(exactly = 0) { entraGroupCommandService.updateGroup(any()) }
+        verify(exactly = 0) { entraGroupStateService.storeAndPublish(any(), any(), any()) }
+    }
+
+    @Test
+    fun `process rejects update when Entra lookup fails`() {
+        every { configGroup.allowGroupUpdate } returns true
+        every { entraGroupCommandService.findGroupIdByResourceGroupId("12345") } throws RuntimeException("Graph unavailable")
+
+        service.process(updateResourceGroup(groupObjectId = "11111111-1111-1111-1111-111111111111"), "trace-lookup-error")
+
+        verify(exactly = 1) { entraGroupCommandService.findGroupIdByResourceGroupId("12345") }
+        verify(exactly = 0) { entraGroupCommandService.updateGroup(any()) }
     }
 
     @Test

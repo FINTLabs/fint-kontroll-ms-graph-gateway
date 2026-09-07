@@ -358,22 +358,28 @@ class EntraGroupSyncService(
 
         val candidatesByResourceGroupId = groupBy { it.resourceGroupId }
 
-        if (candidatesByResourceGroupId.values.all { it.size == 1 }) {
-            return this
-        }
-
         val selected = ArrayList<GroupCandidate>(size)
 
         candidatesByResourceGroupId.forEach { (resourceGroupId, candidates) ->
-            if (candidates.size == 1) {
-                selected += candidates.first()
-                return@forEach
-            }
-
             val storedObjectId =
                 withContext(Dispatchers.IO) {
                     groupRepository.findObjectIdByResourceGroupId(resourceGroupId)
                 }
+            if (candidates.size == 1) {
+                val candidate = candidates.first()
+                if (storedObjectId == null || storedObjectId == candidate.id) {
+                    selected += candidate
+                } else {
+                    log.error(
+                        "ResourceGroupId {} is already linked to Entra group {}; skipping conflicting group {}",
+                        resourceGroupId,
+                        storedObjectId,
+                        candidate.id,
+                    )
+                }
+                return@forEach
+            }
+
             val storedCandidate = storedObjectId?.let { objectId -> candidates.firstOrNull { it.id == objectId } }
             val duplicateIds = candidates.joinToString { it.id.toString() }
 

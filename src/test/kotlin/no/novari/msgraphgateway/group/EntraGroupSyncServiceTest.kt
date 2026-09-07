@@ -16,7 +16,9 @@ import java.time.Instant
 import java.util.UUID
 
 class EntraGroupSyncServiceTest {
-    private val groupRepository = mockk<GroupRepository>()
+    private val groupRepository = mockk<GroupRepository> {
+        every { findObjectIdByResourceGroupId(any()) } returns null
+    }
     private val checksumService = mockk<ChecksumService>()
     private val producer = mockk<GroupProducerService>()
     private val configGroup = mockk<ConfigGroup>()
@@ -295,6 +297,30 @@ class EntraGroupSyncServiceTest {
             coVerify(exactly = 1) {
                 producer.publish(any())
             }
+        }
+
+    @Test
+    fun `processPage skips a single group conflicting with a previously stored group`() =
+        runTest {
+            val storedId = UUID.randomUUID()
+            val conflictingGroup = group(
+                id = UUID.randomUUID().toString(),
+                displayName = "Test_SUFFIX",
+                additionalData = mapOf("extension_resourceGroupId" to "123456"),
+            )
+            every { configGroup.prefix } returns null
+            every { configGroup.suffix } returns "_SUFFIX"
+            every { configGroup.filterMode } returns ConfigGroup.FilterMode.SUFFIX
+            every { configGroup.resourceGroupIdAttribute } returns "extension_resourceGroupId"
+            every { groupRepository.findObjectIdByResourceGroupId(123456L) } returns storedId
+
+            for (republishAll in listOf(false, true)) {
+                assertEquals(0, service.processPage(listOf(conflictingGroup), mutableSetOf(), republishAll))
+            }
+
+            verify(exactly = 0) { groupRepository.batchUpsertReturningChanged(any()) }
+            verify(exactly = 0) { groupRepository.batchUpsert(any()) }
+            verify(exactly = 0) { producer.publish(any()) }
         }
 
     @Test
