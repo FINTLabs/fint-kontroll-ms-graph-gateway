@@ -1,4 +1,4 @@
-package no.novari.msgraphgateway.repository.device
+package no.novari.msgraphgateway.repository.user
 
 import no.novari.msgraphgateway.entra.EntraStatus
 import org.springframework.jdbc.core.JdbcTemplate
@@ -9,10 +9,10 @@ import java.time.OffsetDateTime
 import java.util.UUID
 
 @Repository
-class DeviceMembershipEntityRepository(
+class UserMembershipEntityRepository(
     private val jdbcTemplate: JdbcTemplate,
 ) {
-    fun findAllByIds(ids: Collection<DeviceMembershipId>): Map<DeviceMembershipId, DeviceMembershipEntity> {
+    fun findAllByIds(ids: Collection<UserMembershipId>): Map<UserMembershipId, UserMembershipEntity> {
         if (ids.isEmpty()) {
             return emptyMap()
         }
@@ -20,17 +20,17 @@ class DeviceMembershipEntityRepository(
         val placeholders = ids.joinToString(", ") { "(?::uuid, ?::uuid)" }
         val args =
             ids
-                .flatMap { listOf(it.deviceRef, it.groupRef) }
+                .flatMap { listOf(it.userRef, it.groupRef) }
                 .toTypedArray()
 
         return jdbcTemplate
             .query(
                 """
-                SELECT d.device_ref, d.group_ref, d.status, d.desired_present, d.observed_present,
+                SELECT d.user_ref, d.group_ref, d.status, d.desired_present, d.observed_present,
                        d.created_at, d.last_updated_at
-                FROM device_memberships d
-                JOIN (VALUES $placeholders) AS v(device_ref, group_ref)
-                    ON d.device_ref = v.device_ref
+                FROM user_memberships d
+                JOIN (VALUES $placeholders) AS v(user_ref, group_ref)
+                    ON d.user_ref = v.user_ref
                     AND d.group_ref = v.group_ref
                 """.trimIndent(),
                 rowMapper,
@@ -39,17 +39,17 @@ class DeviceMembershipEntityRepository(
     }
 
     @Transactional
-    fun saveAll(memberships: Collection<DeviceMembershipEntity>) {
+    fun saveAll(memberships: Collection<UserMembershipEntity>) {
         if (memberships.isEmpty()) {
             return
         }
 
         jdbcTemplate.batchUpdate(
             """
-            INSERT INTO device_memberships
-                (device_ref, group_ref, status, desired_present, observed_present, created_at, last_updated_at)
+            INSERT INTO user_memberships
+                (user_ref, group_ref, status, desired_present, observed_present, created_at, last_updated_at)
             VALUES (?::uuid, ?::uuid, ?, ?, ?, ?, ?)
-            ON CONFLICT (device_ref, group_ref)
+            ON CONFLICT (user_ref, group_ref)
             DO UPDATE SET
                 status = EXCLUDED.status,
                 desired_present = EXCLUDED.desired_present,
@@ -58,7 +58,7 @@ class DeviceMembershipEntityRepository(
             memberships,
             memberships.size,
         ) { ps, membership ->
-            ps.setObject(1, membership.id.deviceRef)
+            ps.setObject(1, membership.id.userRef)
             ps.setObject(2, membership.id.groupRef)
             ps.setString(3, membership.status?.name)
             ps.setObject(4, membership.desiredPresent)
@@ -66,14 +66,27 @@ class DeviceMembershipEntityRepository(
             ps.setObject(6, membership.createdAt)
             ps.setObject(7, membership.lastUpdatedAt)
         }
+
+        val removed = memberships.filter { it.desiredPresent == false && it.status == EntraStatus.REMOVED }
+        if (removed.isNotEmpty()) {
+            jdbcTemplate.batchUpdate(
+                "DELETE FROM user_memberships WHERE user_ref = ?::uuid AND group_ref = ?::uuid " +
+                    "AND desired_present IS FALSE AND status = 'REMOVED'",
+                removed,
+                removed.size,
+            ) { ps, membership ->
+                ps.setObject(1, membership.id.userRef)
+                ps.setObject(2, membership.id.groupRef)
+            }
+        }
     }
 
     @Transactional
     fun deleteAll(): Int {
-        val deleted = jdbcTemplate.update("DELETE FROM device_memberships WHERE observed_present IS DISTINCT FROM TRUE")
+        val deleted = jdbcTemplate.update("DELETE FROM user_memberships WHERE observed_present IS DISTINCT FROM TRUE")
         val cleared =
             jdbcTemplate.update(
-                "UPDATE device_memberships SET status = NULL, desired_present = NULL " +
+                "UPDATE user_memberships SET status = NULL, desired_present = NULL " +
                     "WHERE observed_present IS TRUE AND (status IS NOT NULL OR desired_present IS NOT NULL)",
             )
         return deleted + cleared
@@ -84,7 +97,7 @@ class DeviceMembershipEntityRepository(
         val deleted =
             jdbcTemplate.update(
                 """
-                DELETE FROM device_memberships
+                DELETE FROM user_memberships
                 WHERE last_updated_at < ?
                     AND observed_present IS DISTINCT FROM TRUE
                     AND (status IS NOT NULL OR desired_present IS NOT NULL)
@@ -94,7 +107,7 @@ class DeviceMembershipEntityRepository(
         val cleared =
             jdbcTemplate.update(
                 """
-                UPDATE device_memberships
+                UPDATE user_memberships
                 SET status = NULL, desired_present = NULL
                 WHERE last_updated_at < ?
                     AND observed_present IS TRUE
@@ -108,10 +121,10 @@ class DeviceMembershipEntityRepository(
     companion object {
         private val rowMapper =
             RowMapper { rs, _ ->
-                DeviceMembershipEntity(
+                UserMembershipEntity(
                     id =
-                        DeviceMembershipId(
-                            rs.getObject("device_ref", UUID::class.java),
+                        UserMembershipId(
+                            rs.getObject("user_ref", UUID::class.java),
                             rs.getObject("group_ref", UUID::class.java),
                         ),
                     status = rs.getString("status")?.let(EntraStatus::valueOf),
