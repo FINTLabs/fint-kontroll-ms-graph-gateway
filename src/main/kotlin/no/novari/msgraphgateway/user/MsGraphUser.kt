@@ -271,13 +271,10 @@ class MsGraphUser(
                 } ?: 0
         val totalCountDb = userRepository.getCount()
         if (totalCountDb != 0 &&
-            abs(totalCountSource - totalCountDb).div(totalCountDb) <
-            Math.divideExact(
-                configUser.acceptedDeviationPercent ?: 0,
-                100,
-            )
+            abs(totalCountSource.toDouble() - totalCountDb) / totalCountDb >
+            (configUser.acceptedDeviationPercent ?: 0) / 100.0
         ) {
-            log.info("Not starting import, as the coverage is too low")
+            log.info("Not starting import, as the count deviation exceeds the accepted percentage")
             return false
         }
         log.info("Starting import, fetched total count is $totalCountSource, db count is $totalCountDb")

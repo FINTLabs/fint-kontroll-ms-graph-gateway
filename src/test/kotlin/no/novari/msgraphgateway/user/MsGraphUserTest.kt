@@ -70,6 +70,19 @@ class MsGraphUserTest {
         }
 
     @Test
+    fun fullImportStopsWhenCountDeviationExceedsFivePercent() =
+        runTest {
+            every { configUser.acceptedDeviationPercent } returns 5
+            every { userRepository.getCount() } returns 1000
+            every { countRb.get(any()) } returns 900
+
+            createMsGraphUser().startFullImport()
+
+            verify(exactly = 0) { deltaRb.get(any()) }
+            coVerify(exactly = 0) { entraUserSyncService.finishFullImport(any()) }
+        }
+
+    @Test
     fun fullImportStoresNewDeltaLink() =
         runTest {
             every { configUser.userAttributesDelta() } returns arrayOf("id", "displayName")
