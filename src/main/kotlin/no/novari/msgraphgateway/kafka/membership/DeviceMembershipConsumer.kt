@@ -41,7 +41,7 @@ class DeviceMembershipConsumer(
                     .build(),
             ).build()
 
-    @Bean
+    //@Bean
     fun kontrollMembershipConsumer(): ConcurrentMessageListenerContainer<String, DeviceResourceGroupMembership> =
         parameterizedListenerContainerFactoryService
             .createBatchListenerContainerFactory(

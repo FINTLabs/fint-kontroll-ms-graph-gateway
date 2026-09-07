@@ -349,6 +349,18 @@ class ResourceGroupConsumerService(
             return true
         }
 
+        val graphGroupId = entraGroupCommandService.findGroupIdByResourceGroupId(resourceGroup.resourceId)
+        if (!graphGroupId.isNullOrBlank() && !graphGroupId.equals(groupId, ignoreCase = true)) {
+            log.warn(
+                "Cannot update Entra group {}; ResourceGroupId {} already exists in Entra as group {}. traceId={}",
+                groupId,
+                resourceGroup.resourceId,
+                graphGroupId,
+                traceId,
+            )
+            return true
+        }
+
         return false
     }
 
