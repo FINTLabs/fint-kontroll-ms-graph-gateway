@@ -286,6 +286,20 @@ class MsGraphGroupTest {
                 groupMembershipSyncService.completeSnapshot(any(), true, false)
                 deltaLinkStore.createOrUpdate("groups-with-members", "caught-up-delta-link")
             }
+
+            val firstRunId = completedSnapshotRunId.captured
+            every {
+                groupMembershipSyncService.completeSnapshot(
+                    capture(completedSnapshotRunId),
+                    initialBootstrap = false,
+                    republishAll = false,
+                )
+            } returns EntraGroupMembershipSyncService.MembershipSnapshotResult(0, 0)
+
+            service.startFullImport()
+
+            assertNotEquals(firstRunId, completedSnapshotRunId.captured)
+            assertEquals(completedSnapshotRunId.captured, deltaSnapshotRunId.captured)
         }
 
     @Test

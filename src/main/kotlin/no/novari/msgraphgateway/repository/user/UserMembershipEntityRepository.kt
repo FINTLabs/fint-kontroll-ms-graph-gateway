@@ -66,6 +66,19 @@ class UserMembershipEntityRepository(
             ps.setObject(6, membership.createdAt)
             ps.setObject(7, membership.lastUpdatedAt)
         }
+
+        val removed = memberships.filter { it.desiredPresent == false && it.status == EntraStatus.REMOVED }
+        if (removed.isNotEmpty()) {
+            jdbcTemplate.batchUpdate(
+                "DELETE FROM user_memberships WHERE user_ref = ?::uuid AND group_ref = ?::uuid " +
+                    "AND desired_present IS FALSE AND status = 'REMOVED'",
+                removed,
+                removed.size,
+            ) { ps, membership ->
+                ps.setObject(1, membership.id.userRef)
+                ps.setObject(2, membership.id.groupRef)
+            }
+        }
     }
 
     @Transactional

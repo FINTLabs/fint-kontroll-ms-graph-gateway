@@ -229,16 +229,11 @@ class MsGraphGroup(
         val selection = configGroup.getGroupAttributesNotMembers()
         val notSeenIncremented = mutableSetOf<UUID>()
 
-        log.info("Starting full import of groups and memberships from Microsoft Graph")
+        log.info("Starting full import of groups and memberships from Microsoft Graph. snapshotRunId={}", snapshotRunId)
         try {
-            // A full snapshot must use its own delta boundary. The persisted link belongs to the
-            // preceding incremental sync and cannot close the race between this snapshot and Graph.
             val bootstrapDeltaLink = acquireLatestMembershipDeltaLink(selection)
             val groups = fetchAllGroups(notSeenIncremented, republishAll, selection)
             val totalMemberships = bootstrapMemberships(snapshotRunId, groups)
-
-            // Apply everything that changed after the boundary to the staged snapshot before it is
-            // committed. The returned link is therefore the only safe starting point for the next run.
             val firstDeltaPage =
                 callGraph {
                     graphServiceClient

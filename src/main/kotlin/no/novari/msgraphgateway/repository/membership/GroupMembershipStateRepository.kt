@@ -125,8 +125,19 @@ class GroupMembershipStateRepository(
         updateObservedUsers(memberships, true)
     }
 
+    @Transactional
     fun removeObservedUsers(memberships: Collection<UserMembershipId>) {
         updateObservedUsers(memberships, false)
+        if (memberships.isEmpty()) return
+        jdbcTemplate.batchUpdate(
+            "DELETE FROM user_memberships WHERE user_ref = ?::uuid AND group_ref = ?::uuid " +
+                "AND observed_present IS FALSE AND desired_present IS FALSE",
+            memberships,
+            minOf(DB_BATCH_SIZE, memberships.size),
+        ) { statement, membership ->
+            statement.setObject(1, membership.userRef)
+            statement.setObject(2, membership.groupRef)
+        }
     }
 
     fun addObservedDevices(memberships: Collection<DeviceMembershipId>) {
@@ -251,8 +262,9 @@ class GroupMembershipStateRepository(
             runId,
         )
         jdbcTemplate.update(
-            "UPDATE user_memberships SET observed_present = FALSE " +
-                "WHERE observed_present IS TRUE AND observed_run_id IS DISTINCT FROM ?::uuid",
+            "UPDATE user_memberships SET observed_present = FALSE, last_observed_at = now() " +
+                "WHERE observed_run_id IS DISTINCT FROM ?::uuid " +
+                "AND EXISTS (SELECT 1 FROM groups WHERE object_id = user_memberships.group_ref)",
             runId,
         )
         jdbcTemplate.update(
@@ -410,7 +422,8 @@ class GroupMembershipStateRepository(
 
     private fun deleteUnneededState() {
         jdbcTemplate.update(
-            "DELETE FROM user_memberships WHERE observed_present IS FALSE AND desired_present IS NULL AND status IS NULL",
+            "DELETE FROM user_memberships WHERE observed_present IS FALSE " +
+                "AND (desired_present IS FALSE OR (desired_present IS NULL AND status IS NULL))",
         )
         jdbcTemplate.update(
             "DELETE FROM device_memberships WHERE observed_present IS FALSE AND desired_present IS NULL AND status IS NULL",
