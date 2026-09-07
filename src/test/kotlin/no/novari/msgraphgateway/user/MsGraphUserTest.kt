@@ -91,10 +91,11 @@ class MsGraphUserTest {
         }
 
     @Test
-    fun requestFullImportDoesNotStartSecondRunWhileFirstIsRunning(): Unit =
+    fun requestFullImportQueuesSecondRunWhileFirstIsRunning(): Unit =
         runBlocking {
             val started = CompletableDeferred<Unit>()
             val finishFirstRun = CompletableDeferred<Unit>()
+            val secondRunCompleted = CompletableDeferred<Unit>()
             var importCount = 0
 
             val msGraphUser = spyk(createMsGraphUser())
@@ -103,6 +104,8 @@ class MsGraphUserTest {
                 if (importCount == 1) {
                     started.complete(Unit)
                     finishFirstRun.await()
+                } else {
+                    secondRunCompleted.complete(Unit)
                 }
             }
 
@@ -114,6 +117,8 @@ class MsGraphUserTest {
             coVerify(timeout = 500, exactly = 1) { msGraphUser.startFullImport(false) }
 
             finishFirstRun.complete(Unit)
+            secondRunCompleted.await()
+            coVerify(timeout = 500, exactly = 2) { msGraphUser.startFullImport(false) }
         }
 
     @Test

@@ -12,212 +12,209 @@ import no.novari.msgraphgateway.dto.EntraUserMembershipDto
 import no.novari.msgraphgateway.entra.EntraStatus
 import no.novari.msgraphgateway.kafka.membership.EntraDeviceMembershipProducer
 import no.novari.msgraphgateway.kafka.membership.EntraUserMembershipProducer
-import no.novari.msgraphgateway.repository.device.DeviceMembershipEntity
-import no.novari.msgraphgateway.repository.device.DeviceMembershipEntityRepository
 import no.novari.msgraphgateway.repository.device.DeviceMembershipId
-import no.novari.msgraphgateway.repository.user.UserMembershipEntity
-import no.novari.msgraphgateway.repository.user.UserMembershipEntityRepository
+import no.novari.msgraphgateway.repository.membership.GroupMembershipStateRepository
 import no.novari.msgraphgateway.repository.user.UserMembershipId
+import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
-import java.time.OffsetDateTime
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicInteger
 
 @Service
 class EntraGroupMembershipSyncService(
-    private val userMembershipRepository: UserMembershipEntityRepository,
-    private val deviceMembershipRepository: DeviceMembershipEntityRepository,
+    private val membershipStateRepository: GroupMembershipStateRepository,
     private val userMembershipProducer: EntraUserMembershipProducer,
     private val deviceMembershipProducer: EntraDeviceMembershipProducer,
-    private val membershipRestoreService: EntraMembershipRestoreService,
 ) {
-    fun replaceGroupMemberships(
+    fun stageGroupMemberships(
+        runId: UUID,
         groupId: UUID,
         members: Collection<DirectoryObject>,
     ) {
-        val now = OffsetDateTime.now()
-        val userIds = members.filterIsInstance<User>().mapNotNull { it.id.toUuidOrNull() }
-        val deviceIds = members.filterIsInstance<Device>().mapNotNull { it.id.toUuidOrNull() }
-
-        val userRepairErrors = publishUserBaselineChanges(groupId, userIds)
-        val deviceRepairErrors = publishDeviceBaselineChanges(groupId, deviceIds)
-        userMembershipRepository.replaceGroupMemberships(groupId, userIds, now)
-        deviceMembershipRepository.replaceGroupMemberships(groupId, deviceIds, now)
-        userMembershipRepository.saveAll(userRepairErrors)
-        deviceMembershipRepository.saveAll(deviceRepairErrors)
+        val changes =
+            members.mapNotNull { member ->
+                toMemberChange(
+                    memberId = member.id,
+                    graphType = member.odataType ?: member.graphTypeFromRuntimeClass(),
+                    status = EntraStatus.ADDED,
+                    groupId = groupId,
+                )
+            }
+        applySnapshotChanges(runId, groupId, changes)
     }
 
-    fun processDeltaPage(groups: Collection<Group>?): Int {
+    fun processDeltaPage(
+        groups: Collection<Group>?,
+        snapshotRunId: UUID? = null,
+    ): Int {
         if (groups.isNullOrEmpty()) return 0
 
-        val now = OffsetDateTime.now()
-        val userChanges = mutableListOf<UserMembershipEntity>()
-        val deviceChanges = mutableListOf<DeviceMembershipEntity>()
-
+        var processed = 0
         groups.forEach { group ->
             val groupId = group.id.toUuidOrNull() ?: return@forEach
-            readMemberChanges(group).forEach { change ->
-                when (change.type) {
-                    MEMBER_TYPE_USER -> {
-                        userChanges +=
-                            UserMembershipEntity(
-                                id = UserMembershipId(change.memberId, groupId),
-                                status = change.status,
-                                createdAt = now,
-                                lastUpdatedAt = now,
-                            )
-                    }
+            if (group.additionalData.containsKey(REMOVED)) {
+                processed += processRemovedGroup(groupId, snapshotRunId)
+                return@forEach
+            }
 
-                    MEMBER_TYPE_DEVICE -> {
-                        deviceChanges +=
-                            DeviceMembershipEntity(
-                                id = DeviceMembershipId(change.memberId, groupId),
-                                status = change.status,
-                                createdAt = now,
-                                lastUpdatedAt = now,
-                            )
-                    }
-                }
+            val changes = readMemberChanges(group)
+            if (snapshotRunId == null) {
+                applyObservedChanges(groupId, changes)
+            } else {
+                applySnapshotChanges(snapshotRunId, groupId, changes)
+            }
+            processed += changes.size
+        }
+        return processed
+    }
+
+    fun completeSnapshot(
+        runId: UUID,
+        initialBootstrap: Boolean,
+        republishAll: Boolean,
+    ): MembershipSnapshotResult {
+        val added = AtomicInteger(0)
+        val removed = AtomicInteger(0)
+        val publishAllAdditions = initialBootstrap || republishAll
+
+        membershipStateRepository.forEachSnapshotUserAddition(runId, publishAllAdditions) { membership ->
+            publishUserMembership(membership, EntraStatus.ADDED)
+            added.incrementAndGet()
+        }
+        membershipStateRepository.forEachSnapshotDeviceAddition(runId, publishAllAdditions) { membership ->
+            publishDeviceMembership(membership, EntraStatus.ADDED)
+            added.incrementAndGet()
+        }
+
+        if (!initialBootstrap) {
+            membershipStateRepository.forEachMissingUser(runId) { membership ->
+                publishUserMembership(membership, EntraStatus.REMOVED)
+                removed.incrementAndGet()
+            }
+            membershipStateRepository.forEachMissingDevice(runId) { membership ->
+                publishDeviceMembership(membership, EntraStatus.REMOVED)
+                removed.incrementAndGet()
             }
         }
 
-        return processUserChanges(userChanges) + processDeviceChanges(deviceChanges)
+        membershipStateRepository.completeSnapshot(runId)
+        return MembershipSnapshotResult(added.get(), removed.get())
     }
 
-    private fun publishUserBaselineChanges(
+    fun discardSnapshot(runId: UUID) {
+        membershipStateRepository.discardSnapshot(runId)
+    }
+
+    private fun applySnapshotChanges(
+        runId: UUID,
         groupId: UUID,
-        currentUserIds: Collection<UUID>,
-    ): List<UserMembershipEntity> {
-        val currentIds = currentUserIds.toSet()
-        val existing = userMembershipRepository.findAllByGroupRef(groupId)
+        changes: Collection<MemberChange>,
+    ) {
+        val userChanges = changes.filter { it.type == MemberType.USER }.associateBy { it.memberId }.values
+        val deviceChanges = changes.filter { it.type == MemberType.DEVICE }.associateBy { it.memberId }.values
 
-        currentIds
-            .filter { userId -> existing[UserMembershipId(userId, groupId)]?.status != EntraStatus.ADDED }
-            .forEach { userId -> publishUserMembership(userMembership(userId, groupId, EntraStatus.ADDED)) }
-        return existing.values
-            .filter { it.status == EntraStatus.ADDED && it.id.userRef !in currentIds }
-            .mapNotNull { membership ->
-                restoreUserMembership(membership)
-            }
+        membershipStateRepository.markUsersSeen(
+            runId,
+            userChanges
+                .filter { it.status == EntraStatus.ADDED }
+                .map { UserMembershipId(it.memberId, groupId) },
+        )
+        membershipStateRepository.unmarkUsersSeen(
+            runId,
+            userChanges
+                .filter { it.status == EntraStatus.REMOVED }
+                .map { UserMembershipId(it.memberId, groupId) },
+        )
+        membershipStateRepository.markDevicesSeen(
+            runId,
+            deviceChanges
+                .filter { it.status == EntraStatus.ADDED }
+                .map { DeviceMembershipId(it.memberId, groupId) },
+        )
+        membershipStateRepository.unmarkDevicesSeen(
+            runId,
+            deviceChanges
+                .filter { it.status == EntraStatus.REMOVED }
+                .map { DeviceMembershipId(it.memberId, groupId) },
+        )
     }
 
-    private fun publishDeviceBaselineChanges(
+    private fun applyObservedChanges(
         groupId: UUID,
-        currentDeviceIds: Collection<UUID>,
-    ): List<DeviceMembershipEntity> {
-        val currentIds = currentDeviceIds.toSet()
-        val existing = deviceMembershipRepository.findAllByGroupRef(groupId)
+        changes: Collection<MemberChange>,
+    ) {
+        val userChanges = changes.filter { it.type == MemberType.USER }.associateBy { it.memberId }.values
+        val deviceChanges = changes.filter { it.type == MemberType.DEVICE }.associateBy { it.memberId }.values
 
-        currentIds
-            .filter { deviceId -> existing[DeviceMembershipId(deviceId, groupId)]?.status != EntraStatus.ADDED }
-            .forEach { deviceId -> publishDeviceMembership(deviceMembership(deviceId, groupId, EntraStatus.ADDED)) }
-        return existing.values
-            .filter { it.status == EntraStatus.ADDED && it.id.deviceRef !in currentIds }
-            .mapNotNull { membership ->
-                restoreDeviceMembership(membership)
-            }
+        val addedUsers =
+            userChanges
+                .filter { it.status == EntraStatus.ADDED }
+                .map { UserMembershipId(it.memberId, groupId) }
+        val removedUsers =
+            userChanges
+                .filter { it.status == EntraStatus.REMOVED }
+                .map { UserMembershipId(it.memberId, groupId) }
+        val addedDevices =
+            deviceChanges
+                .filter { it.status == EntraStatus.ADDED }
+                .map { DeviceMembershipId(it.memberId, groupId) }
+        val removedDevices =
+            deviceChanges
+                .filter { it.status == EntraStatus.REMOVED }
+                .map { DeviceMembershipId(it.memberId, groupId) }
+
+        membershipStateRepository.addObservedUsers(addedUsers)
+        membershipStateRepository.removeObservedUsers(removedUsers)
+        membershipStateRepository.addObservedDevices(addedDevices)
+        membershipStateRepository.removeObservedDevices(removedDevices)
+
+        addedUsers.forEach { publishUserMembership(it, EntraStatus.ADDED) }
+        removedUsers.forEach { publishUserMembership(it, EntraStatus.REMOVED) }
+        addedDevices.forEach { publishDeviceMembership(it, EntraStatus.ADDED) }
+        removedDevices.forEach { publishDeviceMembership(it, EntraStatus.REMOVED) }
     }
 
-    private fun processUserChanges(changes: Collection<UserMembershipEntity>): Int {
-        val distinctChanges = changes.associateBy { it.id }.values
-        val existing = userMembershipRepository.findAllByIds(distinctChanges.map { it.id })
-        val changesToSave = mutableListOf<UserMembershipEntity>()
-        var published = 0
-
-        distinctChanges.forEach { change ->
-            val stored = existing[change.id]
-            if (change.status == EntraStatus.REMOVED && stored?.status == EntraStatus.ADDED) {
-                restoreUserMembership(stored)?.let(changesToSave::add)
-                published++
-            } else if (stored?.status != change.status) {
-                publishUserMembership(change)
-                changesToSave += change
-                published++
-            }
+    private fun processRemovedGroup(
+        groupId: UUID,
+        snapshotRunId: UUID?,
+    ): Int {
+        if (snapshotRunId != null) {
+            membershipStateRepository.unmarkGroupSeen(snapshotRunId, groupId)
+            return 0
         }
 
-        userMembershipRepository.saveAll(changesToSave)
-        return published
+        val users = membershipStateRepository.findObservedUsersByGroup(groupId)
+        val devices = membershipStateRepository.findObservedDevicesByGroup(groupId)
+        membershipStateRepository.removeObservedUsers(users)
+        membershipStateRepository.removeObservedDevices(devices)
+        users.forEach { publishUserMembership(it, EntraStatus.REMOVED) }
+        devices.forEach { publishDeviceMembership(it, EntraStatus.REMOVED) }
+        return users.size + devices.size
     }
 
-    private fun processDeviceChanges(changes: Collection<DeviceMembershipEntity>): Int {
-        val distinctChanges = changes.associateBy { it.id }.values
-        val existing = deviceMembershipRepository.findAllByIds(distinctChanges.map { it.id })
-        val changesToSave = mutableListOf<DeviceMembershipEntity>()
-        var published = 0
-
-        distinctChanges.forEach { change ->
-            val stored = existing[change.id]
-            if (change.status == EntraStatus.REMOVED && stored?.status == EntraStatus.ADDED) {
-                restoreDeviceMembership(stored)?.let(changesToSave::add)
-                published++
-            } else if (stored?.status != change.status) {
-                publishDeviceMembership(change)
-                changesToSave += change
-                published++
-            }
-        }
-
-        deviceMembershipRepository.saveAll(changesToSave)
-        return published
-    }
-
-    private fun restoreUserMembership(membership: UserMembershipEntity): UserMembershipEntity? {
-        val result = membershipRestoreService.restoreUserMembership(membership.id.groupRef, membership.id.userRef)
-        val status = if (result == MembershipRestoreResult.RESTORED) EntraStatus.ADDED else EntraStatus.ERROR
-        val resultMembership = userMembership(membership.id.userRef, membership.id.groupRef, status)
-        publishUserMembership(resultMembership)
-        return resultMembership.takeIf { it.status == EntraStatus.ERROR }
-    }
-
-    private fun restoreDeviceMembership(membership: DeviceMembershipEntity): DeviceMembershipEntity? {
-        val result = membershipRestoreService.restoreDeviceMembership(membership.id.groupRef, membership.id.deviceRef)
-        val status = if (result == MembershipRestoreResult.RESTORED) EntraStatus.ADDED else EntraStatus.ERROR
-        val resultMembership = deviceMembership(membership.id.deviceRef, membership.id.groupRef, status)
-        publishDeviceMembership(resultMembership)
-        return resultMembership.takeIf { it.status == EntraStatus.ERROR }
-    }
-
-    private fun publishUserMembership(membership: UserMembershipEntity) {
-        val userId = membership.id.userRef.toString()
-        val groupId = membership.id.groupRef.toString()
+    private fun publishUserMembership(
+        membership: UserMembershipId,
+        status: EntraStatus,
+    ) {
+        val userId = membership.userRef.toString()
+        val groupId = membership.groupRef.toString()
         userMembershipProducer.publish(
             membershipKey(groupId, userId),
-            EntraUserMembershipDto(membership.status, groupId, userId),
+            EntraUserMembershipDto(status, groupId, userId),
         )
     }
 
-    private fun publishDeviceMembership(membership: DeviceMembershipEntity) {
-        val deviceId = membership.id.deviceRef.toString()
-        val groupId = membership.id.groupRef.toString()
+    private fun publishDeviceMembership(
+        membership: DeviceMembershipId,
+        status: EntraStatus,
+    ) {
+        val deviceId = membership.deviceRef.toString()
+        val groupId = membership.groupRef.toString()
         deviceMembershipProducer.publish(
             membershipKey(groupId, deviceId),
-            EntraDeviceMembershipDto(membership.status, groupId, deviceId),
+            EntraDeviceMembershipDto(status, groupId, deviceId),
         )
     }
-
-    private fun userMembership(
-        userId: UUID,
-        groupId: UUID,
-        status: EntraStatus,
-    ): UserMembershipEntity =
-        UserMembershipEntity(
-            id = UserMembershipId(userId, groupId),
-            status = status,
-            createdAt = OffsetDateTime.now(),
-            lastUpdatedAt = OffsetDateTime.now(),
-        )
-
-    private fun deviceMembership(
-        deviceId: UUID,
-        groupId: UUID,
-        status: EntraStatus,
-    ): DeviceMembershipEntity =
-        DeviceMembershipEntity(
-            id = DeviceMembershipId(deviceId, groupId),
-            status = status,
-            createdAt = OffsetDateTime.now(),
-            lastUpdatedAt = OffsetDateTime.now(),
-        )
 
     private fun membershipKey(
         groupId: String,
@@ -230,25 +227,78 @@ class EntraGroupMembershipSyncService(
 
         return nodes.mapNotNull { node ->
             val values = (node as? UntypedObject)?.value ?: return@mapNotNull null
-            val memberId = (values["id"] as? UntypedString)?.value.toUuidOrNull() ?: return@mapNotNull null
-            val type = (values["@odata.type"] as? UntypedString)?.value ?: return@mapNotNull null
-            val status = if (values.containsKey("@removed")) EntraStatus.REMOVED else EntraStatus.ADDED
-            MemberChange(memberId, type, status)
+            val status = if (values.containsKey(REMOVED)) EntraStatus.REMOVED else EntraStatus.ADDED
+            toMemberChange(
+                memberId = (values["id"] as? UntypedString)?.value,
+                graphType = (values[ODATA_TYPE] as? UntypedString)?.value,
+                status = status,
+            )
         }
     }
+
+    private fun toMemberChange(
+        memberId: String?,
+        graphType: String?,
+        status: EntraStatus,
+        groupId: UUID? = null,
+    ): MemberChange? {
+        val id = memberId.toUuidOrNull() ?: return null
+        val type = MemberType.fromGraphType(graphType)
+        if (type == MemberType.UNKNOWN) {
+            log.warn(
+                "Ignoring unsupported Graph group member type {} for memberId {}{}",
+                graphType ?: "<missing>",
+                id,
+                groupId?.let { " in groupId $it" }.orEmpty(),
+            )
+            return null
+        }
+        return MemberChange(id, type, status)
+    }
+
+    private fun DirectoryObject.graphTypeFromRuntimeClass(): String? =
+        when (this) {
+            is User -> MEMBER_TYPE_USER
+            is Device -> MEMBER_TYPE_DEVICE
+            else -> null
+        }
 
     private fun String?.toUuidOrNull(): UUID? =
         this?.takeIf { it.isNotBlank() }?.let { runCatching { UUID.fromString(it) }.getOrNull() }
 
     private data class MemberChange(
         val memberId: UUID,
-        val type: String,
+        val type: MemberType,
         val status: EntraStatus,
+    )
+
+    private enum class MemberType {
+        USER,
+        DEVICE,
+        UNKNOWN,
+        ;
+
+        companion object {
+            fun fromGraphType(graphType: String?): MemberType =
+                when (graphType?.lowercase()) {
+                    MEMBER_TYPE_USER -> USER
+                    MEMBER_TYPE_DEVICE -> DEVICE
+                    else -> UNKNOWN
+                }
+        }
+    }
+
+    data class MembershipSnapshotResult(
+        val added: Int,
+        val removed: Int,
     )
 
     companion object {
         private const val MEMBERS_DELTA = "members@delta"
+        private const val REMOVED = "@removed"
+        private const val ODATA_TYPE = "@odata.type"
         private const val MEMBER_TYPE_USER = "#microsoft.graph.user"
         private const val MEMBER_TYPE_DEVICE = "#microsoft.graph.device"
+        private val log = LoggerFactory.getLogger(EntraGroupMembershipSyncService::class.java)
     }
 }

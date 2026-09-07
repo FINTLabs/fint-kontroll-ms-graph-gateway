@@ -27,7 +27,11 @@ class UserMembershipEntity(
     val id: UserMembershipId,
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 50)
-    val status: EntraStatus,
+    val status: EntraStatus?,
+    @Column(name = "desired_present")
+    val desiredPresent: Boolean?,
+    @Column(name = "observed_present")
+    val observedPresent: Boolean?,
     @Column(name = "created_at", nullable = false)
     val createdAt: OffsetDateTime,
     @Column(name = "last_updated_at", nullable = false)

@@ -1,234 +1,164 @@
 package no.novari.msgraphgateway.group
 
-import com.microsoft.graph.models.Device
+import com.microsoft.graph.models.DirectoryObject
 import com.microsoft.graph.models.Group
-import com.microsoft.graph.models.User
 import com.microsoft.kiota.serialization.UntypedArray
 import com.microsoft.kiota.serialization.UntypedNode
 import com.microsoft.kiota.serialization.UntypedObject
 import com.microsoft.kiota.serialization.UntypedString
 import io.mockk.every
 import io.mockk.mockk
-import io.mockk.slot
 import io.mockk.verify
 import no.novari.msgraphgateway.entra.EntraStatus
 import no.novari.msgraphgateway.kafka.membership.EntraDeviceMembershipProducer
 import no.novari.msgraphgateway.kafka.membership.EntraUserMembershipProducer
-import no.novari.msgraphgateway.repository.device.DeviceMembershipEntity
-import no.novari.msgraphgateway.repository.device.DeviceMembershipEntityRepository
-import no.novari.msgraphgateway.repository.user.UserMembershipEntity
-import no.novari.msgraphgateway.repository.user.UserMembershipEntityRepository
+import no.novari.msgraphgateway.repository.device.DeviceMembershipId
+import no.novari.msgraphgateway.repository.membership.GroupMembershipStateRepository
 import no.novari.msgraphgateway.repository.user.UserMembershipId
 import no.novari.msgraphgateway.services.group.EntraGroupMembershipSyncService
-import no.novari.msgraphgateway.services.group.EntraMembershipRestoreService
-import no.novari.msgraphgateway.services.group.MembershipRestoreResult
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
-import java.time.OffsetDateTime
 import java.util.UUID
 
 class EntraGroupMembershipSyncServiceTest {
-    private val userRepository = mockk<UserMembershipEntityRepository>(relaxed = true)
-    private val deviceRepository = mockk<DeviceMembershipEntityRepository>(relaxed = true)
+    private val stateRepository = mockk<GroupMembershipStateRepository>(relaxed = true)
     private val userProducer = mockk<EntraUserMembershipProducer>(relaxed = true)
     private val deviceProducer = mockk<EntraDeviceMembershipProducer>(relaxed = true)
-    private val restoreService = mockk<EntraMembershipRestoreService>(relaxed = true)
-    private val service =
-        EntraGroupMembershipSyncService(
-            userRepository,
-            deviceRepository,
-            userProducer,
-            deviceProducer,
-            restoreService,
-        )
+    private val service = EntraGroupMembershipSyncService(stateRepository, userProducer, deviceProducer)
 
     @Test
-    fun `replaceGroupMemberships separates users and devices`() {
+    fun `stageGroupMemberships separates users and devices without publishing`() {
+        val runId = UUID.randomUUID()
         val groupId = UUID.randomUUID()
         val userId = UUID.randomUUID()
         val deviceId = UUID.randomUUID()
-        val users = slot<Collection<UUID>>()
-        val devices = slot<Collection<UUID>>()
 
-        every { userRepository.replaceGroupMemberships(groupId, capture(users), any()) } returns Unit
-        every { deviceRepository.replaceGroupMemberships(groupId, capture(devices), any()) } returns Unit
-
-        service.replaceGroupMemberships(
+        service.stageGroupMemberships(
+            runId,
             groupId,
             listOf(
-                User().apply { id = userId.toString() },
-                Device().apply { id = deviceId.toString() },
+                directoryObject(userId, "#microsoft.graph.user"),
+                directoryObject(deviceId, "#microsoft.graph.device"),
             ),
         )
 
-        assertEquals(listOf(userId), users.captured)
-        assertEquals(listOf(deviceId), devices.captured)
         verify(exactly = 1) {
-            userProducer.publish(
-                "$groupId:$userId",
-                match { it.code == EntraStatus.ADDED && it.entraGroupRef == groupId.toString() },
-            )
+            stateRepository.markUsersSeen(runId, listOf(UserMembershipId(userId, groupId)))
         }
         verify(exactly = 1) {
-            deviceProducer.publish(
-                "$groupId:$deviceId",
-                match { it.code == EntraStatus.ADDED && it.entraGroupRef == groupId.toString() },
-            )
+            stateRepository.markDevicesSeen(runId, listOf(DeviceMembershipId(deviceId, groupId)))
         }
+        verify(exactly = 0) { userProducer.publish(any(), any()) }
+        verify(exactly = 0) { deviceProducer.publish(any(), any()) }
     }
 
     @Test
-    fun `processDeltaPage applies added user and removed device`() {
+    fun `unsupported member type is ignored`() {
+        val runId = UUID.randomUUID()
+        val groupId = UUID.randomUUID()
+
+        service.stageGroupMemberships(
+            runId,
+            groupId,
+            listOf(directoryObject(UUID.randomUUID(), "#microsoft.graph.servicePrincipal")),
+        )
+
+        verify(exactly = 1) { stateRepository.markUsersSeen(runId, emptyList()) }
+        verify(exactly = 1) { stateRepository.markDevicesSeen(runId, emptyList()) }
+        verify(exactly = 0) { userProducer.publish(any(), any()) }
+        verify(exactly = 0) { deviceProducer.publish(any(), any()) }
+    }
+
+    @Test
+    fun `normal delta stores and publishes observed membership changes`() {
         val groupId = UUID.randomUUID()
         val userId = UUID.randomUUID()
         val deviceId = UUID.randomUUID()
-        val savedUsers = slot<Collection<UserMembershipEntity>>()
-        val savedDevices = slot<Collection<DeviceMembershipEntity>>()
         val group =
-            Group().apply {
-                id = groupId.toString()
-                additionalData["members@delta"] =
-                    UntypedArray(
-                        listOf(
-                            memberNode(userId, "#microsoft.graph.user"),
-                            memberNode(deviceId, "#microsoft.graph.device", removed = true),
-                        ),
-                    )
-            }
+            groupWithChanges(
+                groupId,
+                memberNode(userId, "#microsoft.graph.user"),
+                memberNode(deviceId, "#microsoft.graph.device", removed = true),
+            )
 
-        every { userRepository.saveAll(capture(savedUsers)) } returns Unit
-        every { deviceRepository.saveAll(capture(savedDevices)) } returns Unit
+        val processed = service.processDeltaPage(listOf(group))
 
-        service.processDeltaPage(listOf(group))
-
-        assertEquals(EntraStatus.ADDED, savedUsers.captured.single().status)
-        assertEquals(
-            userId,
-            savedUsers.captured
-                .single()
-                .id.userRef,
-        )
-        assertEquals(
-            groupId,
-            savedUsers.captured
-                .single()
-                .id.groupRef,
-        )
-        assertEquals(EntraStatus.REMOVED, savedDevices.captured.single().status)
-        assertEquals(
-            deviceId,
-            savedDevices.captured
-                .single()
-                .id.deviceRef,
-        )
-        assertEquals(
-            groupId,
-            savedDevices.captured
-                .single()
-                .id.groupRef,
-        )
-        verify(exactly = 1) { userRepository.saveAll(any()) }
-        verify(exactly = 1) { deviceRepository.saveAll(any()) }
-        verify(exactly = 1) {
+        assertEquals(2, processed)
+        verify { stateRepository.addObservedUsers(listOf(UserMembershipId(userId, groupId))) }
+        verify { stateRepository.removeObservedDevices(listOf(DeviceMembershipId(deviceId, groupId))) }
+        verify {
             userProducer.publish("$groupId:$userId", match { it.code == EntraStatus.ADDED })
         }
-        verify(exactly = 1) {
+        verify {
             deviceProducer.publish("$groupId:$deviceId", match { it.code == EntraStatus.REMOVED })
         }
     }
 
     @Test
-    fun `processDeltaPage skips Kafka when status is already stored`() {
+    fun `delta catch-up changes staging without publishing`() {
+        val runId = UUID.randomUUID()
         val groupId = UUID.randomUUID()
         val userId = UUID.randomUUID()
-        val existing =
-            UserMembershipEntity(
-                id = UserMembershipId(userId, groupId),
-                status = EntraStatus.ADDED,
-                createdAt = OffsetDateTime.now(),
-                lastUpdatedAt = OffsetDateTime.now(),
-            )
-        val group =
-            Group().apply {
-                id = groupId.toString()
-                additionalData["members@delta"] =
-                    UntypedArray(listOf(memberNode(userId, "#microsoft.graph.user")))
-            }
+        val group = groupWithChanges(groupId, memberNode(userId, "#microsoft.graph.user", removed = true))
 
-        every { userRepository.findAllByIds(any()) } returns mapOf(existing.id to existing)
+        service.processDeltaPage(listOf(group), runId)
 
-        service.processDeltaPage(listOf(group))
-
+        verify { stateRepository.unmarkUsersSeen(runId, listOf(UserMembershipId(userId, groupId))) }
         verify(exactly = 0) { userProducer.publish(any(), any()) }
     }
 
     @Test
-    fun `removed user is restored when desired status is added`() {
+    fun `initial bootstrap republishes found memberships but not missing memberships`() {
+        val runId = UUID.randomUUID()
         val groupId = UUID.randomUUID()
         val userId = UUID.randomUUID()
-        val existing = userMembership(userId, groupId, EntraStatus.ADDED)
-        val group = groupWithMemberChange(groupId, userId, "#microsoft.graph.user", removed = true)
+        val deviceId = UUID.randomUUID()
+        val userMembership = UserMembershipId(userId, groupId)
+        val deviceMembership = DeviceMembershipId(deviceId, groupId)
 
-        every { userRepository.findAllByIds(any()) } returns mapOf(existing.id to existing)
-        every { restoreService.restoreUserMembership(groupId, userId) } returns MembershipRestoreResult.RESTORED
-
-        service.processDeltaPage(listOf(group))
-
-        verify(exactly = 1) { restoreService.restoreUserMembership(groupId, userId) }
-        verify(exactly = 1) {
-            userProducer.publish("$groupId:$userId", match { it.code == EntraStatus.ADDED })
+        every { stateRepository.forEachSnapshotUserAddition(runId, true, any()) } answers {
+            arg<(UserMembershipId) -> Unit>(2).invoke(userMembership)
         }
-        verify(exactly = 0) {
-            userProducer.publish(any(), match { it.code == EntraStatus.REMOVED })
+        every { stateRepository.forEachSnapshotDeviceAddition(runId, true, any()) } answers {
+            arg<(DeviceMembershipId) -> Unit>(2).invoke(deviceMembership)
         }
-        verify(exactly = 0) { userRepository.saveAll(match { it.isNotEmpty() }) }
+
+        val result = service.completeSnapshot(runId, initialBootstrap = true, republishAll = false)
+
+        assertEquals(EntraGroupMembershipSyncService.MembershipSnapshotResult(2, 0), result)
+        verify { userProducer.publish("$groupId:$userId", match { it.code == EntraStatus.ADDED }) }
+        verify { deviceProducer.publish("$groupId:$deviceId", match { it.code == EntraStatus.ADDED }) }
+        verify(exactly = 0) { stateRepository.forEachMissingUser(any(), any()) }
+        verify(exactly = 0) { stateRepository.forEachMissingDevice(any(), any()) }
+        verify { stateRepository.completeSnapshot(runId) }
     }
 
     @Test
-    fun `removed user publishes error when membership cannot be restored`() {
+    fun `completed resnapshot publishes memberships missing from Graph as removed`() {
+        val runId = UUID.randomUUID()
         val groupId = UUID.randomUUID()
         val userId = UUID.randomUUID()
-        val existing = userMembership(userId, groupId, EntraStatus.ADDED)
-        val group = groupWithMemberChange(groupId, userId, "#microsoft.graph.user", removed = true)
+        val missing = UserMembershipId(userId, groupId)
 
-        every { userRepository.findAllByIds(any()) } returns mapOf(existing.id to existing)
-        every { restoreService.restoreUserMembership(groupId, userId) } returns MembershipRestoreResult.NOT_POSSIBLE
+        every { stateRepository.forEachMissingUser(runId, any()) } answers {
+            arg<(UserMembershipId) -> Unit>(1).invoke(missing)
+        }
 
-        service.processDeltaPage(listOf(group))
+        val result = service.completeSnapshot(runId, initialBootstrap = false, republishAll = false)
 
-        verify(exactly = 1) {
-            userProducer.publish("$groupId:$userId", match { it.code == EntraStatus.ERROR })
-        }
-        verify(exactly = 0) {
-            userProducer.publish(any(), match { it.code == EntraStatus.REMOVED })
-        }
-        verify(exactly = 1) {
-            userRepository.saveAll(match { it.singleOrNull()?.status == EntraStatus.ERROR })
-        }
+        assertEquals(EntraGroupMembershipSyncService.MembershipSnapshotResult(0, 1), result)
+        verify { userProducer.publish("$groupId:$userId", match { it.code == EntraStatus.REMOVED }) }
+        verify { stateRepository.completeSnapshot(runId) }
     }
 
-    private fun groupWithMemberChange(
+    private fun groupWithChanges(
         groupId: UUID,
-        memberId: UUID,
-        type: String,
-        removed: Boolean,
+        vararg changes: UntypedObject,
     ): Group =
         Group().apply {
             id = groupId.toString()
-            additionalData["members@delta"] = UntypedArray(listOf(memberNode(memberId, type, removed)))
+            additionalData["members@delta"] = UntypedArray(changes.toList())
         }
-
-    private fun userMembership(
-        userId: UUID,
-        groupId: UUID,
-        status: EntraStatus,
-    ): UserMembershipEntity =
-        UserMembershipEntity(
-            id = UserMembershipId(userId, groupId),
-            status = status,
-            createdAt = OffsetDateTime.now(),
-            lastUpdatedAt = OffsetDateTime.now(),
-        )
 
     private fun memberNode(
         id: UUID,
@@ -243,4 +173,13 @@ class EntraGroupMembershipSyncServiceTest {
         if (removed) values["@removed"] = UntypedObject(emptyMap())
         return UntypedObject(values)
     }
+
+    private fun directoryObject(
+        id: UUID,
+        graphType: String,
+    ): DirectoryObject =
+        DirectoryObject().apply {
+            this.id = id.toString()
+            odataType = graphType
+        }
 }

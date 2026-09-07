@@ -44,12 +44,21 @@ class MsGraphGroup(
     @Volatile
     private var groupDeltaLink: String? = null
 
+    @Volatile
+    private var membershipBootstrapCompleted: Boolean = false
+
     @PostConstruct
     fun loadDeltaLink() {
-        groupDeltaLink = deltaLinkStore.find(GROUP_MEMBERSHIP_DELTA_STATE)
+        membershipBootstrapCompleted = deltaLinkStore.find(GROUP_MEMBERSHIP_BOOTSTRAP_STATE) == BOOTSTRAP_COMPLETED
+        groupDeltaLink =
+            deltaLinkStore
+                .find(GROUP_MEMBERSHIP_DELTA_STATE)
+                ?.takeIf { membershipBootstrapCompleted }
 
         if (!groupDeltaLink.isNullOrBlank()) {
             log.info("Loaded persisted groups deltaLink from DB")
+        } else if (!membershipBootstrapCompleted) {
+            log.info("Membership bootstrap is not completed; a full group and membership snapshot is required")
         } else {
             log.info("No persisted groups deltaLink found (first run)")
         }
@@ -215,53 +224,82 @@ class MsGraphGroup(
 
     suspend fun startFullImport(republishAll: Boolean = false) {
         val runStartTime = Instant.now()
+        val snapshotRunId = UUID.randomUUID()
+        val initialBootstrap = !membershipBootstrapCompleted
         val selection = configGroup.getGroupAttributesNotMembers()
         val notSeenIncremented = mutableSetOf<UUID>()
 
         log.info("Starting full import of groups and memberships from Microsoft Graph")
+        try {
+            // A full snapshot must use its own delta boundary. The persisted link belongs to the
+            // preceding incremental sync and cannot close the race between this snapshot and Graph.
+            val bootstrapDeltaLink = acquireLatestMembershipDeltaLink(selection)
+            val groups = fetchAllGroups(notSeenIncremented, republishAll, selection)
+            val totalMemberships = bootstrapMemberships(snapshotRunId, groups)
 
-        val bootstrapDeltaLink = acquireLatestMembershipDeltaLink(selection)
-        val groups = fetchAllGroups(notSeenIncremented, republishAll, selection)
-        val totalMemberships = bootstrapMemberships(groups)
+            // Apply everything that changed after the boundary to the staged snapshot before it is
+            // committed. The returned link is therefore the only safe starting point for the next run.
+            val firstDeltaPage =
+                callGraph {
+                    graphServiceClient
+                        .groups()
+                        .delta()
+                        .withUrl(bootstrapDeltaLink)
+                        .get()
+                }
+            val result =
+                pageThroughGroups(
+                    firstPage = firstDeltaPage,
+                    isFullImport = true,
+                    notSeenIncremented = notSeenIncremented,
+                    republishAll = republishAll,
+                    persistDeltaLink = false,
+                    membershipSnapshotRunId = snapshotRunId,
+                )
 
-        val firstDeltaPage =
-            callGraph {
-                graphServiceClient
-                    .groups()
-                    .delta()
-                    .withUrl(bootstrapDeltaLink)
-                    .get()
+            val finalDeltaLink =
+                result.deltaLink
+                    ?.takeIf { it.isNotBlank() }
+                    ?: error("Microsoft Graph did not return a deltaLink after group membership catch-up")
+
+            val membershipResult =
+                withContext(Dispatchers.IO) {
+                    groupMembershipSyncService.completeSnapshot(
+                        runId = snapshotRunId,
+                        initialBootstrap = initialBootstrap,
+                        republishAll = republishAll,
+                    )
+                }
+
+            groupSyncService.markNotSeenGroups(runStartTime, notSeenIncremented)
+            val deletedGroups = groupSyncService.finishFullImport(runStartTime)
+
+            storeGroupDeltaLink(finalDeltaLink)
+            if (initialBootstrap) {
+                withContext(Dispatchers.IO) {
+                    deltaLinkStore.createOrUpdate(GROUP_MEMBERSHIP_BOOTSTRAP_STATE, BOOTSTRAP_COMPLETED)
+                }
+                membershipBootstrapCompleted = true
             }
-        val result =
-            pageThroughGroups(
-                firstPage = firstDeltaPage,
-                isFullImport = true,
-                notSeenIncremented = notSeenIncremented,
-                republishAll = republishAll,
-                persistDeltaLink = false,
+
+            log.info(
+                "Full import of groups and memberships completed " +
+                    "(Total groups={}, total memberships={}, deltaChanges={}, membershipChanges={}, " +
+                    "membershipAdded={}, membershipRemoved={}, publishedChanged={}, deleted={})",
+                groups.size,
+                totalMemberships,
+                result.totalGroupsSeen,
+                result.membershipChanges,
+                membershipResult.added,
+                membershipResult.removed,
+                result.publishedGroups,
+                deletedGroups,
             )
-
-        groupSyncService.markNotSeenGroups(runStartTime, notSeenIncremented)
-
-        val deletedGroups =
-            groupSyncService.finishFullImport(runStartTime)
-
-        val finalDeltaLink =
-            result.deltaLink
-                ?.takeIf { it.isNotBlank() }
-                ?: error("Microsoft Graph did not return a deltaLink after group membership catch-up")
-        storeGroupDeltaLink(finalDeltaLink)
-
-        log.info(
-            "Full import of groups and memberships completed " +
-                "(Total groups={}, total memberships={}, deltaChanges={}, membershipChanges={}, publishedChanged={}, deleted={})",
-            groups.size,
-            totalMemberships,
-            result.totalGroupsSeen,
-            result.membershipChanges,
-            result.publishedGroups,
-            deletedGroups,
-        )
+        } finally {
+            withContext(Dispatchers.IO) {
+                groupMembershipSyncService.discardSnapshot(snapshotRunId)
+            }
+        }
     }
 
     private suspend fun acquireLatestMembershipDeltaLink(selection: Array<String>): String {
@@ -312,7 +350,10 @@ class MsGraphGroup(
         return matchingGroups.distinctBy { it.id }
     }
 
-    private suspend fun bootstrapMemberships(groups: List<Group>): Int {
+    private suspend fun bootstrapMemberships(
+        snapshotRunId: UUID,
+        groups: List<Group>,
+    ): Int {
         if (groups.isEmpty()) return 0
 
         val nextGroupIndex = AtomicInteger(0)
@@ -328,16 +369,12 @@ class MsGraphGroup(
 
                         val groupId = groups[index].id?.let { runCatching { UUID.fromString(it) }.getOrNull() }
                         if (groupId == null) {
-                            log.warn(
-                                "Skipping membership bootstrap for group with invalid object ID: {}",
-                                groups[index].id,
-                            )
-                            continue
+                            error("Cannot complete membership snapshot: invalid group object ID ${groups[index].id}")
                         }
 
                         val members = fetchAllGroupMembers(groupId.toString())
                         log.debug("Fetched {} direct members for groupId {}", members.size, groupId)
-                        groupMembershipSyncService.replaceGroupMemberships(groupId, members)
+                        groupMembershipSyncService.stageGroupMemberships(snapshotRunId, groupId, members)
                         totalMemberships.addAndGet(members.size)
                     }
                 }
@@ -385,6 +422,7 @@ class MsGraphGroup(
         republishAll: Boolean,
         notSeenIncremented: MutableSet<UUID>,
         persistDeltaLink: Boolean = true,
+        membershipSnapshotRunId: UUID? = null,
     ): PageResult {
         var current: DeltaGetResponse? = firstPage
         var last: DeltaGetResponse? = firstPage
@@ -420,7 +458,11 @@ class MsGraphGroup(
                 totalMembershipChanges +=
                     withContext(Dispatchers.IO) {
                         groupMembershipSyncService.processDeltaPage(
-                            value.orEmpty().filter(groupSyncService::matchesConfiguredGroup),
+                            value.orEmpty().filter { group ->
+                                group.additionalData.containsKey("@removed") ||
+                                    groupSyncService.matchesConfiguredGroup(group)
+                            },
+                            membershipSnapshotRunId,
                         )
                     }
 
@@ -471,7 +513,7 @@ class MsGraphGroup(
                     totalPublished,
                 )
             } else {
-                log.info("Stored new group deltaLink after full import")
+                log.info("Group membership delta catch-up completed")
             }
         }
 
@@ -678,6 +720,8 @@ class MsGraphGroup(
     companion object {
         private const val GROUPS_DELTA_URL = "https://graph.microsoft.com/v1.0/groups/delta"
         private const val GROUP_MEMBERSHIP_DELTA_STATE = "groups-with-members"
+        private const val GROUP_MEMBERSHIP_BOOTSTRAP_STATE = "groups-with-members-bootstrap"
+        private const val BOOTSTRAP_COMPLETED = "true"
         private const val MEMBERS_ATTRIBUTE = "members"
         private const val MEMBERSHIP_WORKERS = 8
         private const val GRAPH_MAX_PAGE_SIZE = 999

@@ -67,6 +67,7 @@ abstract class AbstractMembershipService<M : Any, ID : Any, E : Any>(
                     buildMembershipState(
                         validatedMembership.membershipId,
                         existing,
+                        operation,
                         persistedStatus,
                     )
                 resultsToPublish +=
@@ -102,6 +103,7 @@ abstract class AbstractMembershipService<M : Any, ID : Any, E : Any>(
                 buildMembershipState(
                     result.pending.membershipId,
                     result.pending.existing,
+                    operation,
                     persistedStatus,
                 )
             resultsToPublish +=
@@ -446,11 +448,12 @@ abstract class AbstractMembershipService<M : Any, ID : Any, E : Any>(
 
     protected abstract fun findExistingMemberships(ids: Collection<ID>): Map<ID, E>
 
-    protected abstract fun statusOf(existing: E): EntraStatus
+    protected abstract fun statusOf(existing: E): EntraStatus?
 
     protected abstract fun buildMembershipState(
         id: ID,
         existing: E?,
+        operation: OperationType,
         status: EntraStatus,
     ): E
 

@@ -51,6 +51,8 @@ novari:
             initial-delay-ms: 1000
           full-import:
             cron: 0 0 12 * * *
+          weekly-publish:
+            cron: 0 0 2 * * SUN
         group:
             delta:
                 fixed-delay-ms: 1300000

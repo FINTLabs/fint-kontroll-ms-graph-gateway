@@ -12,18 +12,6 @@ import java.util.UUID
 class DeviceMembershipEntityRepository(
     private val jdbcTemplate: JdbcTemplate,
 ) {
-    fun findAllByGroupRef(groupRef: UUID): Map<DeviceMembershipId, DeviceMembershipEntity> =
-        jdbcTemplate
-            .query(
-                """
-                SELECT device_ref, group_ref, status, created_at, last_updated_at
-                FROM device_memberships
-                WHERE group_ref = ?::uuid
-                """.trimIndent(),
-                rowMapper,
-                groupRef,
-            ).associateBy { it.id }
-
     fun findAllByIds(ids: Collection<DeviceMembershipId>): Map<DeviceMembershipId, DeviceMembershipEntity> {
         if (ids.isEmpty()) {
             return emptyMap()
@@ -38,7 +26,8 @@ class DeviceMembershipEntityRepository(
         return jdbcTemplate
             .query(
                 """
-                SELECT d.device_ref, d.group_ref, d.status, d.created_at, d.last_updated_at
+                SELECT d.device_ref, d.group_ref, d.status, d.desired_present, d.observed_present,
+                       d.created_at, d.last_updated_at
                 FROM device_memberships d
                 JOIN (VALUES $placeholders) AS v(device_ref, group_ref)
                     ON d.device_ref = v.device_ref
@@ -57,11 +46,13 @@ class DeviceMembershipEntityRepository(
 
         jdbcTemplate.batchUpdate(
             """
-            INSERT INTO device_memberships (device_ref, group_ref, status, created_at, last_updated_at)
-            VALUES (?::uuid, ?::uuid, ?, ?, ?)
+            INSERT INTO device_memberships
+                (device_ref, group_ref, status, desired_present, observed_present, created_at, last_updated_at)
+            VALUES (?::uuid, ?::uuid, ?, ?, ?, ?, ?)
             ON CONFLICT (device_ref, group_ref)
             DO UPDATE SET
                 status = EXCLUDED.status,
+                desired_present = EXCLUDED.desired_present,
                 last_updated_at = EXCLUDED.last_updated_at
             """.trimIndent(),
             memberships,
@@ -69,42 +60,50 @@ class DeviceMembershipEntityRepository(
         ) { ps, membership ->
             ps.setObject(1, membership.id.deviceRef)
             ps.setObject(2, membership.id.groupRef)
-            ps.setString(3, membership.status.name)
-            ps.setObject(4, membership.createdAt)
-            ps.setObject(5, membership.lastUpdatedAt)
+            ps.setString(3, membership.status?.name)
+            ps.setObject(4, membership.desiredPresent)
+            ps.setObject(5, membership.observedPresent)
+            ps.setObject(6, membership.createdAt)
+            ps.setObject(7, membership.lastUpdatedAt)
         }
     }
 
     @Transactional
-    fun replaceGroupMemberships(
-        groupRef: UUID,
-        deviceRefs: Collection<UUID>,
-        updatedAt: OffsetDateTime,
-    ) {
-        saveAll(
-            deviceRefs.distinct().map { deviceRef ->
-                DeviceMembershipEntity(
-                    id = DeviceMembershipId(deviceRef, groupRef),
-                    status = EntraStatus.ADDED,
-                    createdAt = updatedAt,
-                    lastUpdatedAt = updatedAt,
-                )
-            },
-        )
+    fun deleteAll(): Int {
+        val deleted = jdbcTemplate.update("DELETE FROM device_memberships WHERE observed_present IS DISTINCT FROM TRUE")
+        val cleared =
+            jdbcTemplate.update(
+                "UPDATE device_memberships SET status = NULL, desired_present = NULL " +
+                    "WHERE observed_present IS TRUE AND (status IS NOT NULL OR desired_present IS NOT NULL)",
+            )
+        return deleted + cleared
     }
 
     @Transactional
-    fun deleteAll(): Int = jdbcTemplate.update("DELETE FROM device_memberships")
-
-    @Transactional
-    fun deleteLastUpdatedBefore(cutoff: OffsetDateTime): Int =
-        jdbcTemplate.update(
-            """
-            DELETE FROM device_memberships
-            WHERE last_updated_at < ?
-            """.trimIndent(),
-            cutoff,
-        )
+    fun deleteLastUpdatedBefore(cutoff: OffsetDateTime): Int {
+        val deleted =
+            jdbcTemplate.update(
+                """
+                DELETE FROM device_memberships
+                WHERE last_updated_at < ?
+                    AND observed_present IS DISTINCT FROM TRUE
+                    AND (status IS NOT NULL OR desired_present IS NOT NULL)
+                """.trimIndent(),
+                cutoff,
+            )
+        val cleared =
+            jdbcTemplate.update(
+                """
+                UPDATE device_memberships
+                SET status = NULL, desired_present = NULL
+                WHERE last_updated_at < ?
+                    AND observed_present IS TRUE
+                    AND (status IS NOT NULL OR desired_present IS NOT NULL)
+                """.trimIndent(),
+                cutoff,
+            )
+        return deleted + cleared
+    }
 
     companion object {
         private val rowMapper =
@@ -115,7 +114,9 @@ class DeviceMembershipEntityRepository(
                             rs.getObject("device_ref", UUID::class.java),
                             rs.getObject("group_ref", UUID::class.java),
                         ),
-                    status = EntraStatus.valueOf(rs.getString("status")),
+                    status = rs.getString("status")?.let(EntraStatus::valueOf),
+                    desiredPresent = rs.getObject("desired_present") as? Boolean,
+                    observedPresent = rs.getObject("observed_present") as? Boolean,
                     createdAt = rs.getObject("created_at", OffsetDateTime::class.java),
                     lastUpdatedAt = rs.getObject("last_updated_at", OffsetDateTime::class.java),
                 )

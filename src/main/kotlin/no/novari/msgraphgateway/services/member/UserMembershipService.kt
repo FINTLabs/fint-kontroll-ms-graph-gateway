@@ -54,17 +54,25 @@ class UserMembershipService(
         ids: Collection<UserMembershipId>,
     ): Map<UserMembershipId, UserMembershipEntity> = userMembershipEntityRepository.findAllByIds(ids)
 
-    override fun statusOf(existing: UserMembershipEntity): EntraStatus = existing.status
+    override fun statusOf(existing: UserMembershipEntity): EntraStatus? =
+        when (existing.observedPresent) {
+            true -> EntraStatus.ADDED
+            false -> EntraStatus.REMOVED
+            null -> existing.status
+        }
 
     override fun buildMembershipState(
         id: UserMembershipId,
         existing: UserMembershipEntity?,
+        operation: OperationType,
         status: EntraStatus,
     ): UserMembershipEntity {
         val now = OffsetDateTime.now()
         return UserMembershipEntity(
             id = id,
             status = status,
+            desiredPresent = operation == OperationType.ADD,
+            observedPresent = existing?.observedPresent,
             createdAt = existing?.createdAt ?: now,
             lastUpdatedAt = now,
         )

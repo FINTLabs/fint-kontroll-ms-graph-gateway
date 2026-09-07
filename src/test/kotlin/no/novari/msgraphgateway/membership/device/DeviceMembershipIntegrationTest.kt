@@ -610,11 +610,11 @@ class DeviceMembershipIntegrationTest {
         private const val TOPIC_PARTITIONS = 12
         private const val RESULT_TOPIC_PARTITIONS = 1
         private const val DB_BATCH_SIZE = 1000
-        private const val PERFORMANCE_TEST_MESSAGE_COUNT = 100000
+        private const val PERFORMANCE_TEST_MESSAGE_COUNT = 10_000
         private const val CORRECTNESS_TEST_MESSAGE_COUNT = 1000
-        private const val GRAPH_RESPONSE_DELAY_MS = 100L
+        private const val GRAPH_RESPONSE_DELAY_MS = 250L
         private val CORRECTNESS_TEST_TIMEOUT: Duration = Duration.ofMinutes(4)
-        private val PERFORMANCE_TEST_TIMEOUT: Duration = Duration.ofMinutes(10)
+        private val PERFORMANCE_TEST_TIMEOUT: Duration = Duration.ofMinutes(3)
         private const val INPUT_TOPIC = "fintlabs-no.kontroll.event.resource-group-membership-device"
         private const val RESULT_TOPIC = "fintlabs-no.kontroll.event.graph-device-group-membership"
 

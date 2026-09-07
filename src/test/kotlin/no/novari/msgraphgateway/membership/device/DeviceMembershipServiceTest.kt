@@ -84,6 +84,8 @@ class DeviceMembershipServiceTest {
             DeviceMembershipEntity(
                 id = DeviceMembershipId(deviceRef, groupRef),
                 status = EntraStatus.ADDED,
+                desiredPresent = true,
+                observedPresent = true,
                 createdAt = OffsetDateTime.parse("2026-04-29T10:00:00Z"),
                 lastUpdatedAt = OffsetDateTime.parse("2026-04-29T10:00:00Z"),
             )
@@ -137,6 +139,7 @@ class DeviceMembershipServiceTest {
 
         assertEquals(1, savedSlot.captured.size)
         assertEquals(testCase.expectedPersistedStatus, savedSlot.captured.single().status)
+        assertEquals(testCase.operation == OperationType.ADD, savedSlot.captured.single().desiredPresent)
         verify(exactly = 1) {
             entraDeviceMembershipProducer.publish(
                 "graph-status",
