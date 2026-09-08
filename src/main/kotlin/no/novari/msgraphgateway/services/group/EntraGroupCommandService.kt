@@ -351,7 +351,9 @@ class EntraGroupCommandService(
         val attr =
             configGroup.resourceGroupIdAttribute
                 ?.takeIf { it.isNotBlank() }
-                ?: throw IllegalArgumentException("Missing resourceGroupIdAttribute configuration; cannot check for existing groups")
+                ?: throw IllegalArgumentException(
+                    "Missing resourceGroupIdAttribute configuration; cannot check for existing groups",
+                )
 
         val escapedResourceGroupId = resourceGroupId.replace("'", "''")
         val groups = mutableListOf<Group>()
