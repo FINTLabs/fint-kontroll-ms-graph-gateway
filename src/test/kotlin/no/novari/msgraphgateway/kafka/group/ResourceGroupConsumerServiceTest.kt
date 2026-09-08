@@ -282,9 +282,13 @@ class ResourceGroupConsumerServiceTest {
     @Test
     fun `process rejects update when Entra lookup fails`() {
         every { configGroup.allowGroupUpdate } returns true
-        every { entraGroupCommandService.findGroupIdByResourceGroupId("12345") } throws RuntimeException("Graph unavailable")
+        every { entraGroupCommandService.findGroupIdByResourceGroupId("12345") } throws
+            RuntimeException("Graph unavailable")
 
-        service.process(updateResourceGroup(groupObjectId = "11111111-1111-1111-1111-111111111111"), "trace-lookup-error")
+        service.process(
+            updateResourceGroup(groupObjectId = "11111111-1111-1111-1111-111111111111"),
+            "trace-lookup-error",
+        )
 
         verify(exactly = 1) { entraGroupCommandService.findGroupIdByResourceGroupId("12345") }
         verify(exactly = 0) { entraGroupCommandService.updateGroup(any()) }

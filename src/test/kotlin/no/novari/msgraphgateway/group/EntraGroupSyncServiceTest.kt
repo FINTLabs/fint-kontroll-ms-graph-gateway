@@ -16,9 +16,10 @@ import java.time.Instant
 import java.util.UUID
 
 class EntraGroupSyncServiceTest {
-    private val groupRepository = mockk<GroupRepository> {
-        every { findObjectIdByResourceGroupId(any()) } returns null
-    }
+    private val groupRepository =
+        mockk<GroupRepository> {
+            every { findObjectIdByResourceGroupId(any()) } returns null
+        }
     private val checksumService = mockk<ChecksumService>()
     private val producer = mockk<GroupProducerService>()
     private val configGroup = mockk<ConfigGroup>()
@@ -303,11 +304,12 @@ class EntraGroupSyncServiceTest {
     fun `processPage skips a single group conflicting with a previously stored group`() =
         runTest {
             val storedId = UUID.randomUUID()
-            val conflictingGroup = group(
-                id = UUID.randomUUID().toString(),
-                displayName = "Test_SUFFIX",
-                additionalData = mapOf("extension_resourceGroupId" to "123456"),
-            )
+            val conflictingGroup =
+                group(
+                    id = UUID.randomUUID().toString(),
+                    displayName = "Test_SUFFIX",
+                    additionalData = mapOf("extension_resourceGroupId" to "123456"),
+                )
             every { configGroup.prefix } returns null
             every { configGroup.suffix } returns "_SUFFIX"
             every { configGroup.filterMode } returns ConfigGroup.FilterMode.SUFFIX
