@@ -90,7 +90,7 @@ class EntraGroupStateServiceTest {
                 EntraGroup(
                     objectId = "not-a-uuid",
                     displayName = "TestGroup",
-                    resourceGroupID = 12345,
+                    resourceGroupId = 12345,
                 ),
             )
 
@@ -116,7 +116,7 @@ class EntraGroupStateServiceTest {
                 EntraGroup(
                     objectId = objectId.toString(),
                     displayName = "TestGroup",
-                    resourceGroupID = 12345,
+                    resourceGroupId = 12345,
                 ),
             )
 
@@ -144,7 +144,7 @@ class EntraGroupStateServiceTest {
                 EntraGroup(
                     objectId = objectId.toString(),
                     displayName = "TestGroup",
-                    resourceGroupID = 12345,
+                    resourceGroupId = 12345,
                 ),
             )
 
@@ -167,7 +167,7 @@ class EntraGroupStateServiceTest {
             EntraGroup(
                 objectId = objectId.toString(),
                 displayName = "TestGroup",
-                resourceGroupID = 12345,
+                resourceGroupId = 12345,
                 traceId = "trace-123",
                 status = EntraStatus.UPDATED,
             )
@@ -197,7 +197,7 @@ class EntraGroupStateServiceTest {
                 EntraGroup(
                     objectId = objectId.toString(),
                     displayName = "TestGroup",
-                    resourceGroupID = 12345,
+                    resourceGroupId = 12345,
                 ),
             )
 
@@ -220,7 +220,7 @@ class EntraGroupStateServiceTest {
             EntraGroup(
                 objectId = objectId.toString(),
                 displayName = "TestGroup",
-                resourceGroupID = 12345,
+                resourceGroupId = 12345,
             )
 
         every { checksumService.checksum(entraGroup) } returns checksum
@@ -249,7 +249,7 @@ class EntraGroupStateServiceTest {
                 match {
                     it.objectId == entraGroup.objectId &&
                         it.displayName == entraGroup.displayName &&
-                        it.resourceGroupID == entraGroup.resourceGroupID &&
+                        it.resourceGroupId == entraGroup.resourceGroupId &&
                         it.traceId == null &&
                         it.status == EntraStatus.CREATED
                 },
@@ -265,7 +265,7 @@ class EntraGroupStateServiceTest {
             EntraGroup(
                 objectId = objectId.toString(),
                 displayName = "TestGroup",
-                resourceGroupID = 12345,
+                resourceGroupId = 12345,
             )
 
         every { checksumService.checksum(entraGroup) } returns checksum
@@ -292,7 +292,7 @@ class EntraGroupStateServiceTest {
             EntraGroup(
                 objectId = objectId.toString(),
                 displayName = "TestGroup",
-                resourceGroupID = 12345,
+                resourceGroupId = 12345,
             )
 
         every { checksumService.checksum(entraGroup) } returns checksum
@@ -325,7 +325,7 @@ class EntraGroupStateServiceTest {
                 match {
                     it.objectId == entraGroup.objectId &&
                         it.displayName == entraGroup.displayName &&
-                        it.resourceGroupID == entraGroup.resourceGroupID &&
+                        it.resourceGroupId == entraGroup.resourceGroupId &&
                         it.traceId == null &&
                         it.status == EntraStatus.CREATED
                 },
@@ -341,7 +341,7 @@ class EntraGroupStateServiceTest {
             EntraGroup(
                 objectId = objectId.toString(),
                 displayName = "TestGroup",
-                resourceGroupID = 12345,
+                resourceGroupId = 12345,
             )
 
         every { groupProducerService.publish(any(), EntraStatus.FAILED) } just Runs
@@ -355,7 +355,7 @@ class EntraGroupStateServiceTest {
                 match {
                     it.objectId == entraGroup.objectId &&
                         it.displayName == entraGroup.displayName &&
-                        it.resourceGroupID == entraGroup.resourceGroupID &&
+                        it.resourceGroupId == entraGroup.resourceGroupId &&
                         it.traceId == "trace-123" &&
                         it.status == EntraStatus.FAILED
                 },
@@ -376,7 +376,7 @@ class EntraGroupStateServiceTest {
             EntraGroup(
                 objectId = "not-a-uuid",
                 displayName = "TestGroup",
-                resourceGroupID = 12345,
+                resourceGroupId = 12345,
             )
 
         val result = service.storeAndPublishIfChanged(entraGroup)
@@ -403,7 +403,7 @@ class EntraGroupStateServiceTest {
             EntraGroup(
                 objectId = objectId.toString(),
                 displayName = "TestGroup",
-                resourceGroupID = null,
+                resourceGroupId = null,
             )
 
         val result = service.storeAndPublishIfChanged(entraGroup)

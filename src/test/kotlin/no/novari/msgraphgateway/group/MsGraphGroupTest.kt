@@ -91,7 +91,7 @@ class MsGraphGroupTest {
 
         assertEquals("user-1", result.user?.userObjectId)
         assertEquals(listOf("group-1"), result.groups.map { it.objectId })
-        assertEquals(listOf(12345L), result.groups.map { it.resourceGroupID })
+        assertEquals(listOf(12345L), result.groups.map { it.resourceGroupId })
     }
 
     @Test
