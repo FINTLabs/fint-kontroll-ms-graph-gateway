@@ -105,7 +105,8 @@ class UserMembershipDatabasePerformanceTest {
     private fun count(
         jdbc: JdbcTemplate,
         predicate: String,
-    ): Int = requireNotNull(jdbc.queryForObject("SELECT COUNT(*) FROM user_memberships WHERE $predicate", Int::class.java))
+    ): Int =
+        requireNotNull(jdbc.queryForObject("SELECT COUNT(*) FROM user_memberships WHERE $predicate", Int::class.java))
 
     private fun report(
         operation: String,

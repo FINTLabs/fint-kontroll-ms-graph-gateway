@@ -130,8 +130,11 @@ class UserMembershipRemovalTest {
         assertNull(commands.findAllByIds(listOf(id)).getValue(id).desiredPresent)
     }
 
-    private fun state(status: EntraStatus, desired: Boolean, observed: Boolean?) =
-        UserMembershipEntity(id, status, desired, observed, OffsetDateTime.now(), OffsetDateTime.now())
+    private fun state(
+        status: EntraStatus,
+        desired: Boolean,
+        observed: Boolean?,
+    ) = UserMembershipEntity(id, status, desired, observed, OffsetDateTime.now(), OffsetDateTime.now())
 
     companion object {
         @Container
