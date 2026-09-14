@@ -1,11 +1,11 @@
 plugins {
-    id("org.springframework.boot") version "3.5.15"
+    id("org.springframework.boot") version "3.5.16"
     id("io.spring.dependency-management") version "1.1.7"
-    id("org.jlleitschuh.gradle.ktlint") version "14.0.1"
+    id("org.jlleitschuh.gradle.ktlint") version "14.2.0"
 
     kotlin("jvm") version "2.3.10"
-    kotlin("plugin.spring") version "2.3.10"
-    kotlin("plugin.jpa") version "2.3.10"
+    kotlin("plugin.spring") version "2.4.20"
+    kotlin("plugin.jpa") version "2.4.20"
 }
 
 group = "no.novari"
@@ -50,7 +50,7 @@ dependencies {
 
     // Microsoft Graph SDK (Java)
     implementation("com.microsoft.graph:microsoft-graph:6.65.0")
-    implementation("com.azure:azure-identity:1.18.3")
+    implementation("com.azure:azure-identity:1.18.6")
     implementation("org.apache.commons:commons-lang3:3.20.0")
     implementation("org.apache.commons:commons-compress:1.28.0")
 

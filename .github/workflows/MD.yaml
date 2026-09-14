@@ -40,7 +40,7 @@ jobs:
             packages: write
 
         steps:
-            - uses: actions/github-script@v8
+            - uses: actions/github-script@v9
               name: Get resource group name
               id: rg
               with:
@@ -49,7 +49,7 @@ jobs:
                       return `rg-${a[0]}-${a[1]}`
                   result-encoding: string
 
-            - uses: actions/github-script@v8
+            - uses: actions/github-script@v9
               name: Get environment
               id: environment
               with:
@@ -58,7 +58,7 @@ jobs:
                       return `${a[1]}`
                   result-encoding: string
 
-            - uses: actions/github-script@v8
+            - uses: actions/github-script@v9
               name: Get auth
               id: auth
               with:
@@ -74,7 +74,7 @@ jobs:
                   echo "OrgId: $ORG"
 
             - name: Checkout repository
-              uses: actions/checkout@v6
+              uses: actions/checkout@v7.0.1
 
             - name: Log in to the Container registry
               uses: docker/login-action@v4
@@ -139,7 +139,7 @@ jobs:
                   use-kubelogin: 'true'
 
             - name: Deploy to ${{ env.CLUSTER_NAME }}
-              uses: azure/k8s-deploy@v7
+              uses: azure/k8s-deploy@v7.0.1
               with:
                   manifests: ${{ steps.bake.outputs.manifestsBundle }}
                   namespace: ${{ env.ORG }}
