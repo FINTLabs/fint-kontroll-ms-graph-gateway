@@ -566,7 +566,7 @@ class ResourceGroupConsumerService(
             return false
         }
 
-        if (expectedEntraGroup.resourceGroupID == null) {
+        if (expectedEntraGroup.resourceGroupId == null) {
             log.warn(
                 "Cannot store expected Entra group {}; invalid resourceGroupId {}. traceId={}",
                 expectedEntraGroup.objectId,

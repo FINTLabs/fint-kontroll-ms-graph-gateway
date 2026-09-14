@@ -48,7 +48,7 @@ class EntraGroupMapperTest {
 
         assertEquals("b4d78b5c-9d57-41f1-8b09-31224442c1ac", group.objectId)
         assertEquals("-pre-test223344-suff-", group.displayName)
-        assertEquals(223344L, group.resourceGroupID)
+        assertEquals(223344L, group.resourceGroupId)
     }
 
     private fun mapper(
