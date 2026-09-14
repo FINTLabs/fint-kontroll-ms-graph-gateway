@@ -5,7 +5,7 @@ plugins {
 
     kotlin("jvm") version "2.3.10"
     kotlin("plugin.spring") version "2.3.10"
-    kotlin("plugin.jpa") version "2.3.10"
+    kotlin("plugin.jpa") version "2.4.20"
 }
 
 group = "no.novari"
