@@ -50,7 +50,7 @@ dependencies {
 
     // Microsoft Graph SDK (Java)
     implementation("com.microsoft.graph:microsoft-graph:6.65.0")
-    implementation("com.azure:azure-identity:1.18.3")
+    implementation("com.azure:azure-identity:1.18.6")
     implementation("org.apache.commons:commons-lang3:3.20.0")
     implementation("org.apache.commons:commons-compress:1.28.0")
 
