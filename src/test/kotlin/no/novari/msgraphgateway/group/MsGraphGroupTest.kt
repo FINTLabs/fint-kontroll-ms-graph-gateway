@@ -10,6 +10,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import no.novari.msgraphgateway.config.ConfigGroup
 import no.novari.msgraphgateway.config.ConfigUser
+import no.novari.msgraphgateway.config.ReadinessManager
 import no.novari.msgraphgateway.entra.DeltaLinkStore
 import no.novari.msgraphgateway.services.group.EntraGroupSyncService
 import org.junit.jupiter.api.Assertions.*
@@ -23,6 +24,7 @@ class MsGraphGroupTest {
     private val graphServiceClient = mockk<GraphServiceClient>(relaxed = true)
     private val groupSyncService = mockk<EntraGroupSyncService>()
     private val deltaLinkStore = mockk<DeltaLinkStore>()
+    private val readinessManager = mockk<ReadinessManager>(relaxed = true)
 
     @Test
     fun `getEntraUserWithGroups fetches groups through transitive memberOf`() {
@@ -39,6 +41,7 @@ class MsGraphGroupTest {
                 groupSyncService = groupSyncService,
                 deltaLinkStore = deltaLinkStore,
                 configUser = localConfigUser,
+                readinessManager = readinessManager,
             )
 
         val user =
@@ -104,6 +107,7 @@ class MsGraphGroupTest {
                 groupSyncService = groupSyncService,
                 deltaLinkStore = deltaLinkStore,
                 configUser = ConfigUser(),
+                readinessManager = readinessManager,
             )
         val user =
             User().apply {
@@ -195,6 +199,7 @@ class MsGraphGroupTest {
                     groupSyncService = groupSyncService,
                     deltaLinkStore = deltaLinkStore,
                     configUser = configUser,
+                    readinessManager = readinessManager,
                 )
 
             val before = Instant.now()
@@ -221,6 +226,7 @@ class MsGraphGroupTest {
             assertTrue(cutoffSlot.captured >= before)
             assertTrue(cutoffSlot.captured <= after)
             assertEquals(markNotSeenCutoffSlot.captured, cutoffSlot.captured)
+            verify(exactly = 1) { readinessManager.ready() }
         }
 
     @Test
@@ -234,6 +240,7 @@ class MsGraphGroupTest {
                         groupSyncService = groupSyncService,
                         deltaLinkStore = deltaLinkStore,
                         configUser = configUser,
+                        readinessManager = readinessManager,
                     ),
                 )
 
