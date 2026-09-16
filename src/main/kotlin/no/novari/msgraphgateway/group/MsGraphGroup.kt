@@ -10,6 +10,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import no.novari.msgraphgateway.config.ConfigGroup
 import no.novari.msgraphgateway.config.ConfigUser
+import no.novari.msgraphgateway.config.ReadinessManager
 import no.novari.msgraphgateway.dto.UserWithGroupsDto
 import no.novari.msgraphgateway.entra.DeltaLinkStore
 import no.novari.msgraphgateway.entra.group.EntraGroup
@@ -32,6 +33,7 @@ class MsGraphGroup(
     private val groupSyncService: EntraGroupSyncService,
     private val deltaLinkStore: DeltaLinkStore,
     private val configUser: ConfigUser,
+    private val readinessManager: ReadinessManager,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val runMutex = Mutex()
@@ -138,6 +140,7 @@ class MsGraphGroup(
                     notSeenIncremented = mutableSetOf(),
                     republishAll = false,
                 )
+                readinessManager.ready()
             } catch (e: RuntimeException) {
                 log.error("Delta groups pull failed: {}", e.message, e)
             } finally {
@@ -250,6 +253,7 @@ class MsGraphGroup(
             result.publishedGroups,
             deletedGroups,
         )
+        readinessManager.ready()
     }
 
     private suspend fun pageThroughGroups(

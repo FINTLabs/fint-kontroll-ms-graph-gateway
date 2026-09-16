@@ -48,3 +48,19 @@ spec:
           enabled: true
           port: "8080"
           path: '/actuator/prometheus'
+
+  probes:
+      readiness:
+          path: '/actuator/health/readiness'
+          port: "8080"
+          initialDelaySeconds: 0
+          failureThreshold: 100
+          periodSeconds: 10
+          timeoutSeconds: 3
+      liveness:
+          path: '/actuator/health/liveness'
+          port: "8080"
+          initialDelaySeconds: 0
+          failureThreshold: 10
+          periodSeconds: 10
+          timeoutSeconds: 3
