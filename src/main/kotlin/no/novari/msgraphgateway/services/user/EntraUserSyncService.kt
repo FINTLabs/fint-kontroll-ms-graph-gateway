@@ -139,7 +139,16 @@ class EntraUserSyncService(
             val normals = ArrayList<Pair<UUID, User>>()
 
             for ((id, u) in candidates) {
-                if (isExternal(u)) externals += id to u else normals += id to u
+                if (isExternal(u)) {
+                    externals += id to u
+                } else if (hasEmployeeOrStudentId(u)) {
+                    normals += id to u
+                }
+            }
+
+            val skipped = candidates.size - externals.size - normals.size
+            if (skipped > 0) {
+                log.debug("Skipped {} users with no employee or student ID", skipped)
             }
 
             val published =
@@ -376,6 +385,11 @@ class EntraUserSyncService(
         val expected = configUser.externaluservalue ?: return false
         return attr.equals(expected, ignoreCase = true)
     }
+
+    private fun hasEmployeeOrStudentId(user: User): Boolean =
+        EntraUser(user, configUser).let {
+            !it.employeeId.isNullOrBlank() || !it.studentId.isNullOrBlank()
+        }
 
     companion object {
         private val log = LoggerFactory.getLogger(EntraUserSyncService::class.java)

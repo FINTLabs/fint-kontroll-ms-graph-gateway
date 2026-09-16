@@ -52,11 +52,6 @@ class UserProducerService(
     }
 
     fun publish(entraUser: EntraUser) {
-        if (entraUser.employeeId == null && entraUser.studentId == null) {
-            log.warn("Skipping publishing user with no employee or student ID: ${entraUser.userPrincipalName}")
-            return
-        }
-
         entraUserTemplate.send(
             ParameterizedProducerRecord
                 .builder<EntraUserPayload>()
@@ -76,9 +71,5 @@ class UserProducerService(
                 .value(null)
                 .build(),
         )
-    }
-
-    companion object {
-        private val log = org.slf4j.LoggerFactory.getLogger(UserProducerService::class.java)
     }
 }
