@@ -1,6 +1,6 @@
 services:
   postgresql:
-    image: postgres:17.10
+    image: postgres:17.11
     container_name: postgres
     environment:
       POSTGRES_DB: postgres
@@ -13,7 +13,7 @@ services:
     restart: unless-stopped
 
   pgadmin:
-    image: dpage/pgadmin4:9.16
+    image: dpage/pgadmin4:9.18
     container_name: pgadmin
     ports:
       - 5480:80

@@ -9,7 +9,7 @@ import java.io.Serializable
 data class EntraGroup(
     val objectId: String? = null,
     val displayName: String? = null,
-    val resourceGroupID: Long? = null,
+    val resourceGroupId: Long? = null,
     val traceId: String? = null,
     val status: EntraStatus? = null,
 ) : Serializable {
@@ -20,7 +20,7 @@ data class EntraGroup(
     ) : this(
         objectId = group.id,
         displayName = group.displayName,
-        resourceGroupID = getResourceGroupId(group, configGroup),
+        resourceGroupId = getResourceGroupId(group, configGroup),
         traceId = traceId,
     )
 
@@ -45,7 +45,7 @@ data class EntraGroup(
         EntraGroupPayload(
             objectId = objectId,
             displayName = displayName,
-            resourceGroupId = resourceGroupID,
+            resourceGroupId = resourceGroupId,
             traceId = traceId,
             status = status,
         )

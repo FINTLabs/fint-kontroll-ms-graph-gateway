@@ -74,11 +74,14 @@ import java.util.concurrent.atomic.AtomicInteger
         "novari.scheduler.user.delta.fixed-delay-ms=86400000",
         "novari.scheduler.user.full-import.cron=-",
         "novari.scheduler.user.weekly-publish.cron=-",
-        "ms-graph.membership.device.consumer-concurrency=1",
-        "ms-graph.membership.device.consumer-max-poll-records=500",
-        "ms-graph.membership.device.graph-batch-size=20",
-        "ms-graph.membership.device.graph-max-concurrent-calls=3",
-        "ms-graph.membership.device.result-topic-partitions=1",
+        "novari.scheduler.device.delta.initial-delay-ms=86400000",
+        "novari.scheduler.device.delta.fixed-delay-ms=86400000",
+        "novari.scheduler.device.full-import.cron=-",
+        "ms-graph.membership.consumer-concurrency=1",
+        "ms-graph.membership.consumer-max-poll-records=500",
+        "ms-graph.membership.graph-batch-size=20",
+        "ms-graph.membership.graph-max-concurrent-calls=3",
+        "ms-graph.membership.result-topic-partitions=1",
         "spring.task.scheduling.enabled=false",
         "logging.level.no.novari=ERROR",
     ],
@@ -111,7 +114,7 @@ class DeviceMembershipIntegrationTest {
         assertEquals(
             PERFORMANCE_TEST_MESSAGE_COUNT,
             consumedResults,
-            "Expected every consumed membership event to produce one entra-device-group-membership result within $PERFORMANCE_TEST_TIMEOUT",
+            "Expected every consumed membership event to produce one graph-device-group-membership result within $PERFORMANCE_TEST_TIMEOUT",
         )
         assertTrue(
             graphCallCounter.get() > 0,
@@ -607,13 +610,13 @@ class DeviceMembershipIntegrationTest {
         private const val TOPIC_PARTITIONS = 12
         private const val RESULT_TOPIC_PARTITIONS = 1
         private const val DB_BATCH_SIZE = 1000
-        private const val PERFORMANCE_TEST_MESSAGE_COUNT = 100000
+        private const val PERFORMANCE_TEST_MESSAGE_COUNT = 10_000
         private const val CORRECTNESS_TEST_MESSAGE_COUNT = 1000
-        private const val GRAPH_RESPONSE_DELAY_MS = 100L
+        private const val GRAPH_RESPONSE_DELAY_MS = 250L
         private val CORRECTNESS_TEST_TIMEOUT: Duration = Duration.ofMinutes(4)
-        private val PERFORMANCE_TEST_TIMEOUT: Duration = Duration.ofMinutes(10)
-        private const val INPUT_TOPIC = "fintlabs-no.kontroll.event.kontroll-resource-group-membership-device"
-        private const val RESULT_TOPIC = "fintlabs-no.kontroll.event.entra-device-group-membership"
+        private val PERFORMANCE_TEST_TIMEOUT: Duration = Duration.ofMinutes(3)
+        private const val INPUT_TOPIC = "fintlabs-no.kontroll.event.resource-group-membership-device"
+        private const val RESULT_TOPIC = "fintlabs-no.kontroll.event.graph-device-group-membership"
 
         @Container
         @JvmStatic

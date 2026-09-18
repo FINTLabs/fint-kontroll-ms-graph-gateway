@@ -130,7 +130,7 @@ class EntraGroupSyncService(
                 batch
                     .asSequence()
                     .filterNot { it.additionalData.containsKey("@removed") }
-                    .filter { it.matchesConfiguredGroup() }
+                    .filter(::matchesConfiguredGroup)
                     .mapNotNull { group ->
                         val id = parseObjectIdOrNull(group.id) ?: return@mapNotNull null
                         id to group
@@ -428,8 +428,8 @@ class EntraGroupSyncService(
             ?.toLongOrNull()
     }
 
-    private fun Group.matchesConfiguredGroup(): Boolean {
-        val name = displayName ?: return false
+    fun matchesConfiguredGroup(group: Group): Boolean {
+        val name = group.displayName ?: return false
 
         val prefix = configGroup.prefix?.trim().orEmpty()
         val suffix = configGroup.suffix?.trim().orEmpty()
@@ -460,7 +460,7 @@ class EntraGroupSyncService(
         val hasResourceGroupId =
             configGroup.resourceGroupIdAttribute
                 ?.takeIf { it.isNotBlank() }
-                ?.let { attr -> additionalData.containsKey(attr) }
+                ?.let { attr -> group.additionalData.containsKey(attr) }
                 ?: true
 
         return matchesName && hasResourceGroupId

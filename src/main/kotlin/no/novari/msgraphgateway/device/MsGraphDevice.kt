@@ -9,6 +9,7 @@ import jakarta.annotation.PostConstruct
 import jakarta.annotation.PreDestroy
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import no.novari.msgraphgateway.config.ConfigDevice
 import no.novari.msgraphgateway.entra.DeltaLinkStore
 import no.novari.msgraphgateway.repository.device.DeviceRepository
@@ -21,7 +22,6 @@ import java.time.temporal.ChronoUnit
 import java.util.UUID
 import java.util.concurrent.CompletionException
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicBoolean
 
 @Component
 class MsGraphDevice(
@@ -33,8 +33,9 @@ class MsGraphDevice(
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val runMutex = Mutex()
-    private val fullImportRequested = AtomicBoolean(false)
-    private val republishAllRequested = AtomicBoolean(false)
+    private val requestMutex = Mutex()
+    private var fullImportRequested = false
+    private var republishAllRequested = false
 
     @Volatile
     private var deviceDeltaLink: String? = null
@@ -59,12 +60,14 @@ class MsGraphDevice(
         fixedDelayString = "\${novari.scheduler.device.delta.fixed-delay-ms}",
     )
     fun pullAllDevicesDelta() {
-        if (fullImportRequested.get()) {
-            log.info("Full import pending; skipping device delta run")
-            return
-        }
         val trackingId = UUID.randomUUID().toString()
         scope.launch {
+            if (isFullImportRequested()) {
+                log.info("Full import pending; skipping device delta run")
+                tryStartFullImportIfRequested()
+                return@launch
+            }
+
             if (!runMutex.tryLock()) {
                 log.info("Device sync already running; skipping delta run")
                 return@launch
@@ -136,50 +139,65 @@ class MsGraphDevice(
 
     @Scheduled(cron = "\${novari.scheduler.device.full-import.cron}")
     fun fullImportDevices() {
-        requestFullImport()
+        requestFullImport(false)
+    }
+
+    @Scheduled(cron = "\${novari.scheduler.device.weekly-publish.cron}")
+    fun weeklyPublishDevices() {
+        requestFullImport(true)
     }
 
     private suspend fun tryStartFullImportIfRequested() {
-        if (!fullImportRequested.get()) return
-        if (!runMutex.tryLock()) return
+        if (!isFullImportRequested()) return
+        if (!runMutex.tryLock()) {
+            log.info("A device sync is running; full import requested and will start afterward")
+            return
+        }
+
+        val republishRequested = takeFullImportRequest()
+        if (republishRequested == null) {
+            runMutex.unlock()
+            return
+        }
 
         val startTime = System.currentTimeMillis()
-        val republishRequested = republishAllRequested.getAndSet(false)
 
         try {
             startFullImport(republishRequested)
         } finally {
             runMutex.unlock()
             logElapsed(startTime, "full import of devices")
-            fullImportRequested.set(false)
+            tryStartFullImportIfRequested()
         }
     }
 
     fun requestFullImport(republishAll: Boolean = false) {
-        fullImportRequested.set(true)
-
-        if (republishAll) {
-            republishAllRequested.set(true)
-        }
-
         scope.launch {
-            if (!runMutex.tryLock()) {
-                log.info("A device sync is running; full import requested and will start afterward")
-                return@launch
-            }
-
-            val startTime = System.currentTimeMillis()
-            val republishRequested = republishAllRequested.getAndSet(false)
-
-            try {
-                startFullImport(republishRequested)
-            } finally {
-                runMutex.unlock()
-                logElapsed(startTime, "full import of devices")
-                fullImportRequested.set(false)
-            }
+            enqueueFullImport(republishAll)
+            tryStartFullImportIfRequested()
         }
     }
+
+    private suspend fun enqueueFullImport(republishAll: Boolean) =
+        requestMutex.withLock {
+            fullImportRequested = true
+            republishAllRequested = republishAllRequested || republishAll
+        }
+
+    private suspend fun isFullImportRequested(): Boolean =
+        requestMutex.withLock {
+            fullImportRequested
+        }
+
+    private suspend fun takeFullImportRequest(): Boolean? =
+        requestMutex.withLock {
+            if (!fullImportRequested) {
+                null
+            } else {
+                fullImportRequested = false
+                republishAllRequested.also { republishAllRequested = false }
+            }
+        }
 
     private suspend fun startFullImport(republishAll: Boolean = false) {
         val runStartTime = Instant.now()

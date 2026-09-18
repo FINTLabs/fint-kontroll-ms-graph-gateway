@@ -6,19 +6,19 @@ import no.novari.kafka.consuming.ListenerConfiguration
 import no.novari.kafka.consuming.ParameterizedListenerContainerFactoryService
 import no.novari.kafka.topic.name.EventTopicNameParameters
 import no.novari.kafka.topic.name.TopicNamePrefixParameters
-import no.novari.msgraphgateway.membership.device.DeviceMembershipProcessingProperties
+import no.novari.msgraphgateway.membership.MembershipProcessingProperties
 import no.novari.msgraphgateway.membership.device.DeviceResourceGroupMembership
-import no.novari.msgraphgateway.services.member.MembershipService
+import no.novari.msgraphgateway.services.member.DeviceMembershipService
 import org.springframework.context.annotation.Bean
 import org.springframework.kafka.listener.ConcurrentMessageListenerContainer
 import org.springframework.stereotype.Component
 
 @Component
-class MembershipConsumer(
+class DeviceMembershipConsumer(
     private val parameterizedListenerContainerFactoryService: ParameterizedListenerContainerFactoryService,
     private val errorHandlerFactory: ErrorHandlerFactory,
-    private val membershipService: MembershipService,
-    private val properties: DeviceMembershipProcessingProperties,
+    private val membershipService: DeviceMembershipService,
+    private val properties: MembershipProcessingProperties,
 ) {
     private fun listenerConfiguration() =
         ListenerConfiguration
@@ -55,5 +55,8 @@ class MembershipConsumer(
                         .skipFailedRecords()
                         .build(),
                 ),
+                { container ->
+                    container.setConcurrency(properties.consumerConcurrency)
+                },
             ).createContainer(topic)
 }

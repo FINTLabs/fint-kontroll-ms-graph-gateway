@@ -15,7 +15,7 @@ data class ErrorResponseResourceId(
 )
 
 @RestController
-@RequestMapping("/groups")
+@RequestMapping("/api/admin/groups")
 class GroupController(
     private val msGraphGroup: MsGraphGroup,
 ) {
