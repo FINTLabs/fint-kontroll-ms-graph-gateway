@@ -84,6 +84,15 @@ tasks.register<Test>("integrationTests") {
     classpath = testSourceSet.runtimeClasspath
 }
 
+configurations.matching { it.name.startsWith("ktlint") }.configureEach {
+    resolutionStrategy.eachDependency {
+        if (requested.group == "org.jetbrains.kotlin") {
+            useVersion("2.2.21")
+            because("ktlint 1.8.0 expects Kotlin compiler artifacts from the 2.2.21 line")
+        }
+    }
+}
+
 ktlint {
     version.set("1.8.0")
     verbose.set(true)
