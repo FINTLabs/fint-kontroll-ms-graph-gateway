@@ -16,7 +16,7 @@ import org.testcontainers.junit.jupiter.Testcontainers
 import java.time.OffsetDateTime
 import java.util.UUID
 
-@Testcontainers
+@Testcontainers(disabledWithoutDocker = true)
 class UserMembershipRemovalTest {
     private lateinit var jdbc: JdbcTemplate
     private lateinit var commands: UserMembershipEntityRepository
