@@ -56,7 +56,7 @@ class UserMembershipRemovalTest {
         commands.saveAll(listOf(state(EntraStatus.REMOVED, false, true)))
 
         assertEquals(setOf(otherUser, otherGroup, anotherMembership), commands.findAllByIds(memberships).keys)
-        assertEquals(3, jdbc.queryForObject("SELECT COUNT(*) FROM user_memberships", Int::class.java))
+        assertEquals(3, jdbc.queryForObject("SELECT COUNT(*) FROM user_memberships", Int::class.java)!!)
         assertTrue(commands.findAllByIds(memberships).values.all { it.observedPresent == true })
     }
 
