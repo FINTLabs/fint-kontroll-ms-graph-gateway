@@ -128,7 +128,7 @@ class ResourceGroupConsumerService(
             }
 
             ExistingGroupLookup.NotFound -> {
-                Unit
+                // Unit
             }
         }
 
