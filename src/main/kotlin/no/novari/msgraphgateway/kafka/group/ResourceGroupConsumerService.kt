@@ -89,47 +89,43 @@ class ResourceGroupConsumerService(
             return
         }
 
-        when (val existingGroup = findExistingGroupForCreate(resourceGroup.resourceId, traceId)) {
-            is ExistingGroupLookup.Found -> {
-                val storedAndPublished =
-                    storeExpectedAndPublish(
-                        resourceGroup = resourceGroup.copy(idpGroupObjectId = existingGroup.groupId),
-                        traceId = traceId,
-                        forcePublish = true,
-                        status = EntraStatus.NO_CHANGES,
-                    )
+        val existingGroup = findExistingGroupForCreate(resourceGroup.resourceId, traceId)
 
-                if (storedAndPublished) {
-                    log.info(
-                        "ResourceGroupId {} already existed as Entra group {}; local state was published. traceId={}",
-                        resourceGroup.resourceId,
-                        existingGroup.groupId,
-                        traceId,
-                    )
-                } else {
-                    log.info(
-                        "ResourceGroupId {} already exists as Entra group {}; skipping create. traceId={}",
-                        resourceGroup.resourceId,
-                        existingGroup.groupId,
-                        traceId,
-                    )
-                    publishResourceGroupResponse(
-                        resourceGroup = resourceGroup.copy(idpGroupObjectId = existingGroup.groupId),
-                        traceId = traceId,
-                        status = EntraStatus.NO_CHANGES,
-                    )
-                }
-                return
-            }
+        if (existingGroup is ExistingGroupLookup.Found) {
+            val storedAndPublished =
+                storeExpectedAndPublish(
+                    resourceGroup = resourceGroup.copy(idpGroupObjectId = existingGroup.groupId),
+                    traceId = traceId,
+                    forcePublish = true,
+                    status = EntraStatus.NO_CHANGES,
+                )
 
-            ExistingGroupLookup.LookupFailed -> {
-                publishResourceGroupResponse(resourceGroup, traceId, EntraStatus.FAILED)
-                return
+            if (storedAndPublished) {
+                log.info(
+                    "ResourceGroupId {} already existed as Entra group {}; local state was published. traceId={}",
+                    resourceGroup.resourceId,
+                    existingGroup.groupId,
+                    traceId,
+                )
+            } else {
+                log.info(
+                    "ResourceGroupId {} already exists as Entra group {}; skipping create. traceId={}",
+                    resourceGroup.resourceId,
+                    existingGroup.groupId,
+                    traceId,
+                )
+                publishResourceGroupResponse(
+                    resourceGroup = resourceGroup.copy(idpGroupObjectId = existingGroup.groupId),
+                    traceId = traceId,
+                    status = EntraStatus.NO_CHANGES,
+                )
             }
+            return
+        }
 
-            ExistingGroupLookup.NotFound -> {
-                // Unit
-            }
+        if (existingGroup == ExistingGroupLookup.LookupFailed) {
+            publishResourceGroupResponse(resourceGroup, traceId, EntraStatus.FAILED)
+            return
         }
 
         log.debug(
