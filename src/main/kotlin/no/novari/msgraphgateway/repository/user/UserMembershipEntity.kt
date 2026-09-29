@@ -1,4 +1,4 @@
-package no.novari.msgraphgateway.repository.device
+package no.novari.msgraphgateway.repository.user
 
 import jakarta.persistence.Column
 import jakarta.persistence.Embeddable
@@ -13,18 +13,18 @@ import java.time.OffsetDateTime
 import java.util.UUID
 
 @Embeddable
-data class DeviceMembershipId(
-    @Column(name = "device_ref", nullable = false)
-    var deviceRef: UUID,
+data class UserMembershipId(
+    @Column(name = "user_ref", nullable = false)
+    var userRef: UUID,
     @Column(name = "group_ref", nullable = false)
     var groupRef: UUID,
 ) : Serializable
 
 @Entity
-@Table(name = "device_memberships")
-class DeviceMembershipEntity(
+@Table(name = "user_memberships")
+class UserMembershipEntity(
     @EmbeddedId
-    val id: DeviceMembershipId,
+    val id: UserMembershipId,
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 50)
     val status: EntraStatus?,

@@ -30,7 +30,7 @@ class EntraGroupStateService(
                     log.info(
                         "Entra group {} has no stored checksum; treating ResourceGroupId {} as changed",
                         objectId,
-                        entraGroup.resourceGroupID,
+                        entraGroup.resourceGroupId,
                     )
                     return false
                 }
@@ -41,7 +41,7 @@ class EntraGroupStateService(
             log.info(
                 "Entra group {} checksum differs; treating ResourceGroupId {} with displayName '{}' as changed",
                 objectId,
-                entraGroup.resourceGroupID,
+                entraGroup.resourceGroupId,
                 entraGroup.displayName,
             )
         }
@@ -118,7 +118,7 @@ class EntraGroupStateService(
                     return false
                 }
 
-        if (entraGroup.resourceGroupID == null) {
+        if (entraGroup.resourceGroupId == null) {
             log.warn("Cannot publish Entra group {} without resourceGroupId", objectId)
             return false
         }
@@ -134,7 +134,7 @@ class EntraGroupStateService(
         log.debug(
             "Published Entra group {} for ResourceGroupId {} with traceId {} and status {}",
             objectId,
-            entraGroup.resourceGroupID,
+            entraGroup.resourceGroupId,
             groupToPublish.traceId,
             status,
         )
@@ -180,7 +180,7 @@ class EntraGroupStateService(
                 }
 
         val resourceGroupId =
-            entraGroup.resourceGroupID
+            entraGroup.resourceGroupId
                 ?: run {
                     log.warn("Cannot store Entra group {} without resourceGroupId", objectId)
                     return null

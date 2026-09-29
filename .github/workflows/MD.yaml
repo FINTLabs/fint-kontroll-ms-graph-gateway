@@ -32,7 +32,7 @@ env:
     ORG: ${{ inputs.org }}
 
 jobs:
-    cd:
+    md:
         runs-on: ubuntu-latest
 
         permissions:
