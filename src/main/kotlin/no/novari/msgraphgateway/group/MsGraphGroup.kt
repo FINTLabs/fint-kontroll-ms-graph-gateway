@@ -345,6 +345,35 @@ class MsGraphGroup(
         return matchingGroups.distinctBy { it.id }
     }
 
+    suspend fun fetchGroups(
+        selection: Array<String> = configGroup.getGroupAttributesNotMembers()
+    ): List<Group> {
+        val matchingGroups = mutableListOf<Group>()
+        var response =
+            callGraph {
+                graphServiceClient.groups().get { req ->
+                    req.headers.add("ConsistencyLevel", "eventual")
+                    req.queryParameters?.apply {
+                        select = selection
+                        top = configGroup.groupPagingSize
+                    }
+                }
+            }
+
+        while (response != null) {
+            val groups = response.value.orEmpty()
+            //groupSyncService.processPage(groups, notSeenIncremented, republishAll)
+            groups.filterTo(matchingGroups, groupSyncService::matchesConfiguredGroup)
+
+            response =
+                response.odataNextLink
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { nextLink -> callGraph { graphServiceClient.groups().withUrl(nextLink).get() } }
+        }
+
+        return matchingGroups.distinctBy { it.id }
+    }
+
     private suspend fun bootstrapMemberships(
         snapshotRunId: UUID,
         groups: List<Group>,

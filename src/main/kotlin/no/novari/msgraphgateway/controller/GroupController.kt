@@ -1,5 +1,6 @@
 package no.novari.msgraphgateway.controller
 
+import com.microsoft.graph.models.Group
 import no.fintlabs.util.OnlyDevelopers
 import no.novari.msgraphgateway.group.MsGraphGroup
 import org.springframework.http.HttpStatus
@@ -9,6 +10,9 @@ import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
+import java.util.UUID
+import kotlin.collections.filterTo
+import kotlin.collections.orEmpty
 
 data class ErrorResponseResourceId(
     val message: String,
@@ -80,4 +84,18 @@ class GroupController(
             ResponseEntity.ok(group)
         }
     }
+
+    //@OnlyDevelopers
+    @GetMapping("/listentragroupinfo")
+    suspend fun getGroupListWithUniqueName(): ResponseEntity<*> {
+        val groups = msGraphGroup.fetchGroups()
+        return if (groups == null) {
+            ResponseEntity
+                .status(HttpStatus.NOT_FOUND)
+                .body(ErrorResponseResourceId("Group not found in Entra"))
+        } else {
+            ResponseEntity.ok(groups)
+        }
+    }
+
 }
