@@ -26,7 +26,7 @@ class UserMembershipEntity(
     @EmbeddedId
     val id: UserMembershipId,
     @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, length = 50)
+    @Column(name = "status", nullable = true, length = 50)
     val status: EntraStatus?,
     @Column(name = "desired_present")
     val desiredPresent: Boolean?,

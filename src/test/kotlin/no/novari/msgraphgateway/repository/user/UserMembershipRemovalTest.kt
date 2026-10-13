@@ -167,6 +167,29 @@ class UserMembershipRemovalTest {
         assertTrue(commands.findAllByIds(listOf(id)).isEmpty())
     }
 
+    @Test
+    fun `find all with null status excludes memberships with a status`() {
+        val membershipWithStatus = UserMembershipId(UUID.randomUUID(), UUID.randomUUID())
+        observations.addObservedUsers(listOf(id, membershipWithStatus))
+        commands.saveAll(
+            listOf(
+                UserMembershipEntity(
+                    membershipWithStatus,
+                    EntraStatus.ADDED,
+                    true,
+                    true,
+                    OffsetDateTime.now(),
+                    OffsetDateTime.now(),
+                ),
+            ),
+        )
+
+        val memberships = commands.findAllWithNullStatus()
+
+        assertEquals(listOf(id), memberships.map { it.id })
+        assertTrue(memberships.all { it.status == null })
+    }
+
     private fun state(
         status: EntraStatus,
         desired: Boolean,

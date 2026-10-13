@@ -36,6 +36,10 @@ class UserMembershipService(
     fun deleteMembershipsUpdatedBefore(cutoff: OffsetDateTime): Int =
         userMembershipEntityRepository.deleteLastUpdatedBefore(cutoff)
 
+    @Transactional(readOnly = true)
+    fun findMembershipsWithNullStatus(): List<UserMembershipEntity> =
+        userMembershipEntityRepository.findAllWithNullStatus()
+
     override val memberType = "user"
     override val memberTypeForLog = "User"
 

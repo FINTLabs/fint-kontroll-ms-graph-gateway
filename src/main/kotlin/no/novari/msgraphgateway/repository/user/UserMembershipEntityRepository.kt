@@ -12,6 +12,18 @@ import java.util.UUID
 class UserMembershipEntityRepository(
     private val jdbcTemplate: JdbcTemplate,
 ) {
+    fun findAllWithNullStatus(): List<UserMembershipEntity> =
+        jdbcTemplate.query(
+            """
+            SELECT user_ref, group_ref, status, desired_present, observed_present,
+                   created_at, last_updated_at
+            FROM user_memberships
+            WHERE status IS NULL
+            ORDER BY user_ref, group_ref
+            """.trimIndent(),
+            rowMapper,
+        )
+
     fun findAllByIds(ids: Collection<UserMembershipId>): Map<UserMembershipId, UserMembershipEntity> {
         if (ids.isEmpty()) {
             return emptyMap()
