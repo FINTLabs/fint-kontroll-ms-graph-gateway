@@ -1,6 +1,5 @@
 package no.novari.msgraphgateway.controller
 
-import com.microsoft.graph.models.Group
 import no.fintlabs.util.OnlyDevelopers
 import no.novari.msgraphgateway.group.MsGraphGroup
 import org.springframework.http.HttpStatus
@@ -10,12 +9,21 @@ import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
-import java.util.UUID
-import kotlin.collections.filterTo
-import kotlin.collections.orEmpty
 
 data class ErrorResponseResourceId(
     val message: String,
+)
+
+data class GroupWithUniqueNameResponse(
+    val id: String?,
+    val displayName: String?,
+    val uniqueName: String?,
+)
+
+data class GroupUniqueNameStatusResponse(
+    val totalGroupCount: Int,
+    val missingUniqueNameCount: Int,
+    val groups: List<GroupWithUniqueNameResponse>,
 )
 
 @RestController
@@ -85,17 +93,24 @@ class GroupController(
         }
     }
 
-    //@OnlyDevelopers
-    @GetMapping("/listentragroupinfo")
-    suspend fun getGroupListWithUniqueName(): ResponseEntity<*> {
-        val groups = msGraphGroup.fetchGroups()
-        return if (groups == null) {
-            ResponseEntity
-                .status(HttpStatus.NOT_FOUND)
-                .body(ErrorResponseResourceId("Group not found in Entra"))
-        } else {
-            ResponseEntity.ok(groups)
-        }
-    }
+    @OnlyDevelopers
+    @GetMapping("/unique-name-status")
+    fun getGroupUniqueNameStatus(): ResponseEntity<GroupUniqueNameStatusResponse> {
+        val groups =
+            msGraphGroup.fetchGroupsForUniqueNameAudit().map { group ->
+                GroupWithUniqueNameResponse(
+                    id = group.id,
+                    displayName = group.displayName,
+                    uniqueName = group.uniqueName,
+                )
+            }
 
+        return ResponseEntity.ok(
+            GroupUniqueNameStatusResponse(
+                totalGroupCount = groups.size,
+                missingUniqueNameCount = groups.count { it.uniqueName.isNullOrBlank() },
+                groups = groups,
+            ),
+        )
+    }
 }
