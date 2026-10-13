@@ -2,27 +2,33 @@ package no.novari.msgraphgateway.controller
 
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import no.novari.msgraphgateway.repository.user.UserMembershipEntity
 import no.novari.msgraphgateway.repository.user.UserMembershipId
 import no.novari.msgraphgateway.services.member.UserMembershipService
-import org.junit.jupiter.api.Assertions.assertEquals
+import org.hamcrest.Matchers.nullValue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
+import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
+import org.springframework.test.web.servlet.setup.MockMvcBuilders
 import java.time.OffsetDateTime
 import java.util.UUID
 
 class UserMembershipControllerTest {
     private lateinit var membershipService: UserMembershipService
-    private lateinit var controller: UserMembershipController
+    private lateinit var mockMvc: MockMvc
 
     @BeforeEach
     fun setUp() {
         membershipService = mockk()
-        controller = UserMembershipController(membershipService)
+        mockMvc = MockMvcBuilders.standaloneSetup(UserMembershipController(membershipService)).build()
     }
 
     @Test
-    fun `null memberships response contains memberships and count`() {
+    fun `GET without-status returns memberships and count`() {
         val membership =
             UserMembershipEntity(
                 id = UserMembershipId(UUID.randomUUID(), UUID.randomUUID()),
@@ -34,14 +40,17 @@ class UserMembershipControllerTest {
             )
         every { membershipService.findMembershipsWithNullStatus() } returns listOf(membership)
 
-        val response = controller.getMembershipsWithNullStatus()
-        val responseBody = requireNotNull(response.body)
-        val responseMembership = responseBody.memberships.single()
+        mockMvc
+            .perform(get("/api/admin/user-memberships/without-status"))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.count").value(1))
+            .andExpect(jsonPath("$.memberships.length()").value(1))
+            .andExpect(jsonPath("$.memberships[0].userRef").value(membership.id.userRef.toString()))
+            .andExpect(jsonPath("$.memberships[0].groupRef").value(membership.id.groupRef.toString()))
+            .andExpect(jsonPath("$.memberships[0].status").value(nullValue()))
+            .andExpect(jsonPath("$.memberships[0].desiredPresent").value(nullValue()))
+            .andExpect(jsonPath("$.memberships[0].observedPresent").value(true))
 
-        assertEquals(200, response.statusCode.value())
-        assertEquals(1, responseBody.count)
-        assertEquals(membership.id.userRef, responseMembership.userRef)
-        assertEquals(membership.id.groupRef, responseMembership.groupRef)
-        assertEquals(null, responseMembership.status)
+        verify(exactly = 1) { membershipService.findMembershipsWithNullStatus() }
     }
 }
