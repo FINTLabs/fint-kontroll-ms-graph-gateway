@@ -1,6 +1,6 @@
 services:
   kafka:
-    image: apache/kafka:3.8.1
+    image: apache/kafka:3.9.2
     container_name: kafka
     ports:
       - "9092:9092"
@@ -20,7 +20,7 @@ services:
       KAFKA_NUM_PARTITIONS: 1
 
   kafdrop:
-    image: obsidiandynamics/kafdrop:4.2.0
+    image: obsidiandynamics/kafdrop:4.3.0
     container_name: kafdrop
     restart: "no"
     ports:
