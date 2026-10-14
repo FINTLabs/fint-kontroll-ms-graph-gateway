@@ -131,7 +131,7 @@ class GroupMembershipStateRepository(
         if (memberships.isEmpty()) return
         jdbcTemplate.batchUpdate(
             "DELETE FROM user_memberships WHERE user_ref = ?::uuid AND group_ref = ?::uuid " +
-                "AND observed_present IS FALSE AND desired_present IS FALSE",
+                "AND observed_present IS FALSE AND desired_present IS DISTINCT FROM TRUE",
             memberships,
             minOf(DB_BATCH_SIZE, memberships.size),
         ) { statement, membership ->
@@ -257,8 +257,10 @@ class GroupMembershipStateRepository(
     @Transactional
     fun completeSnapshot(runId: UUID) {
         jdbcTemplate.update(
-            "UPDATE user_memberships SET observed_present = TRUE " +
-                "WHERE observed_run_id = ?::uuid AND observed_present IS DISTINCT FROM TRUE",
+            "UPDATE user_memberships SET observed_present = TRUE, status = 'ADDED' " +
+                "WHERE observed_run_id = ?::uuid " +
+                "AND (observed_present IS DISTINCT FROM TRUE " +
+                "OR status IS DISTINCT FROM 'ADDED')",
             runId,
         )
         jdbcTemplate.update(
@@ -305,9 +307,13 @@ class GroupMembershipStateRepository(
                 INSERT INTO user_memberships
                     (user_ref, group_ref, status, desired_present, observed_present, observed_run_id,
                      last_observed_at, created_at, last_updated_at)
-                VALUES (?::uuid, ?::uuid, NULL, NULL, TRUE, NULL, now(), now(), now())
+                VALUES (?::uuid, ?::uuid, 'ADDED', NULL, TRUE, NULL, now(), now(), now())
                 ON CONFLICT (user_ref, group_ref)
-                DO UPDATE SET observed_present = TRUE, observed_run_id = NULL, last_observed_at = now()
+                DO UPDATE SET
+                    observed_present = TRUE,
+                    observed_run_id = NULL,
+                    last_observed_at = now(),
+                    status = 'ADDED'
                 """.trimIndent(),
                 memberships,
                 minOf(DB_BATCH_SIZE, memberships.size),
@@ -423,7 +429,7 @@ class GroupMembershipStateRepository(
     private fun deleteUnneededState() {
         jdbcTemplate.update(
             "DELETE FROM user_memberships WHERE observed_present IS FALSE " +
-                "AND (desired_present IS FALSE OR (desired_present IS NULL AND status IS NULL))",
+                "AND desired_present IS DISTINCT FROM TRUE",
         )
         jdbcTemplate.update(
             "DELETE FROM device_memberships WHERE observed_present IS FALSE AND desired_present IS NULL AND status IS NULL",
