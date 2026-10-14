@@ -186,7 +186,7 @@ class UserMembershipRemovalTest {
             ),
         )
 
-        val memberships = commands.findAllObservedWithoutDesiredState()
+        val memberships = commands.findAllObservedWithoutDesiredState(limit = 10, offset = 0)
 
         assertEquals(listOf(id), memberships.map { it.id })
         assertEquals(EntraStatus.ADDED, memberships.single().status)
