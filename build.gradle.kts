@@ -55,7 +55,7 @@ dependencies {
     // Kafka
     implementation("org.springframework.kafka:spring-kafka")
     implementation("no.novari:kafka:6.0.0")
-    implementation("at.yawk.lz4:lz4-java:1.11.2")
+    implementation("at.yawk.lz4:lz4-java:1.11.4")
 
     // Microsoft Graph SDK (Java)
     implementation("com.microsoft.graph:microsoft-graph:6.65.0")
