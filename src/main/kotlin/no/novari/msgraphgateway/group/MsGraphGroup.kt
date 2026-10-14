@@ -318,13 +318,31 @@ class MsGraphGroup(
         notSeenIncremented: MutableSet<UUID>,
         republishAll: Boolean,
         selection: Array<String>,
+    ): List<Group> =
+        fetchMatchingGroups(selection) { groups ->
+            groupSyncService.processPage(groups, notSeenIncremented, republishAll)
+        }
+
+    fun fetchGroupsForUniqueNameAudit(): List<Group> =
+        runBlocking {
+            val selection =
+                (configGroup.getGroupAttributesNotMembers() + "uniqueName")
+                    .distinct()
+                    .toTypedArray()
+
+            fetchMatchingGroups(selection)
+        }
+
+    private suspend fun fetchMatchingGroups(
+        selection: Array<String>,
+        onPage: suspend (List<Group>) -> Unit = {},
     ): List<Group> {
         val matchingGroups = mutableListOf<Group>()
         var response =
             callGraph {
-                graphServiceClient.groups().get { req ->
-                    req.headers.add("ConsistencyLevel", "eventual")
-                    req.queryParameters?.apply {
+                graphServiceClient.groups().get { request ->
+                    request.headers.add("ConsistencyLevel", "eventual")
+                    request.queryParameters?.apply {
                         select = selection
                         top = configGroup.groupPagingSize
                     }
@@ -333,12 +351,13 @@ class MsGraphGroup(
 
         while (response != null) {
             val groups = response.value.orEmpty()
-            groupSyncService.processPage(groups, notSeenIncremented, republishAll)
+
+            onPage(groups)
             groups.filterTo(matchingGroups, groupSyncService::matchesConfiguredGroup)
 
             response =
                 response.odataNextLink
-                    ?.takeIf { it.isNotBlank() }
+                    ?.takeIf(String::isNotBlank)
                     ?.let { nextLink -> callGraph { graphServiceClient.groups().withUrl(nextLink).get() } }
         }
 

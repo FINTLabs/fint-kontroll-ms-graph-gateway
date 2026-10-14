@@ -1,5 +1,6 @@
 package no.novari.msgraphgateway.group
 
+import com.microsoft.graph.groups.GroupsRequestBuilder
 import com.microsoft.graph.groups.delta.DeltaGetResponse
 import com.microsoft.graph.models.Group
 import com.microsoft.graph.models.GroupCollectionResponse
@@ -19,6 +20,7 @@ import org.junit.jupiter.api.Assertions.*
 import org.junit.jupiter.api.Test
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.function.Consumer
 
 class MsGraphGroupTest {
     private val configGroup = mockk<ConfigGroup>()
@@ -161,6 +163,81 @@ class MsGraphGroupTest {
             listOf("prefix-only", "suffix-only", "both", "neither"),
             service.getEntraUserWithGroups("user-1").groups.map { it.objectId },
         )
+    }
+
+    @Test
+    fun `unique name audit selects required attributes and filters all pages`() {
+        val localConfigGroup =
+            ConfigGroup(minNotSeenCount = 7).apply {
+                resourceGroupIdAttribute = "extension_resourceGroupId"
+                groupPagingSize = 100
+            }
+        val groupsRequestBuilder = mockk<GroupsRequestBuilder>()
+        val nextPageRequestBuilder = mockk<GroupsRequestBuilder>()
+        val requestConfiguration = slot<Consumer<GroupsRequestBuilder.GetRequestConfiguration>>()
+        val included =
+            Group().apply {
+                id = "included"
+                displayName = "Included"
+                uniqueName = "unique-name"
+            }
+        val excluded =
+            Group().apply {
+                id = "excluded"
+                displayName = "Excluded"
+            }
+        val duplicate =
+            Group().apply {
+                id = "included"
+                displayName = "Included duplicate"
+            }
+        val missingUniqueName =
+            Group().apply {
+                id = "missing-unique-name"
+                displayName = "Missing unique name"
+            }
+        val firstPage =
+            GroupCollectionResponse().apply {
+                value = listOf(included, excluded)
+                odataNextLink = "next-page"
+            }
+        val secondPage =
+            GroupCollectionResponse().apply {
+                value = listOf(duplicate, missingUniqueName)
+            }
+
+        every { graphServiceClient.groups() } returns groupsRequestBuilder
+        every { groupsRequestBuilder.get(capture(requestConfiguration)) } returns firstPage
+        every { groupsRequestBuilder.withUrl("next-page") } returns nextPageRequestBuilder
+        every { nextPageRequestBuilder.get() } returns secondPage
+        every { groupSyncService.matchesConfiguredGroup(included) } returns true
+        every { groupSyncService.matchesConfiguredGroup(excluded) } returns false
+        every { groupSyncService.matchesConfiguredGroup(duplicate) } returns true
+        every { groupSyncService.matchesConfiguredGroup(missingUniqueName) } returns true
+
+        val service =
+            MsGraphGroup(
+                configGroup = localConfigGroup,
+                graphServiceClient = graphServiceClient,
+                groupSyncService = groupSyncService,
+                groupMembershipSyncService = groupMembershipSyncService,
+                deltaLinkStore = deltaLinkStore,
+                configUser = ConfigUser(),
+            )
+
+        val result = service.fetchGroupsForUniqueNameAudit()
+        val capturedConfiguration = groupsRequestBuilder.GetRequestConfiguration()
+        requestConfiguration.captured.accept(capturedConfiguration)
+        val queryParameters = requireNotNull(capturedConfiguration.queryParameters)
+
+        assertArrayEquals(
+            arrayOf("id", "displayName", "extension_resourceGroupId", "uniqueName"),
+            queryParameters.select,
+        )
+        assertEquals(100, queryParameters.top)
+        assertEquals(listOf("included", "missing-unique-name"), result.map { it.id })
+        assertNull(result.last().uniqueName)
+        verify(exactly = 1) { nextPageRequestBuilder.get() }
     }
 
     @Test
@@ -385,6 +462,10 @@ class MsGraphGroupTest {
 
             coVerify(exactly = 1) {
                 groupSyncService.finishFullImport(any())
+            }
+
+            coVerify(exactly = 1) {
+                groupSyncService.processPage(emptyList(), any(), false)
             }
 
             coVerifyOrder {
