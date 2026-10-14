@@ -71,7 +71,7 @@ class ResourceGroupConsumerServiceTest {
             EntraGroup(
                 objectId = groupId,
                 displayName = "TestGroup",
-                resourceGroupID = 12345,
+                resourceGroupId = 12345,
             )
         every { entraGroupStateService.storeAndPublish(any(), traceId, EntraStatus.CREATED) } returns true
 
@@ -87,7 +87,7 @@ class ResourceGroupConsumerServiceTest {
             entraGroupStateService.storeAndPublish(
                 match {
                     it.objectId == groupId &&
-                        it.resourceGroupID == 12345L
+                        it.resourceGroupId == 12345L
                 },
                 traceId,
                 EntraStatus.CREATED,
@@ -121,7 +121,7 @@ class ResourceGroupConsumerServiceTest {
             EntraGroup(
                 objectId = newGroupId,
                 displayName = "TestGroup",
-                resourceGroupID = 12345,
+                resourceGroupId = 12345,
             )
         every { entraGroupStateService.storeAndPublish(any(), traceId, EntraStatus.CREATED) } returns true
 
@@ -142,7 +142,7 @@ class ResourceGroupConsumerServiceTest {
             entraGroupStateService.storeAndPublish(
                 match {
                     it.objectId == newGroupId &&
-                        it.resourceGroupID == 12345L
+                        it.resourceGroupId == 12345L
                 },
                 traceId,
                 EntraStatus.CREATED,
@@ -161,7 +161,7 @@ class ResourceGroupConsumerServiceTest {
             EntraGroup(
                 objectId = groupId,
                 displayName = "TestGroup",
-                resourceGroupID = 12345,
+                resourceGroupId = 12345,
             )
         every { entraGroupStateService.storeAndPublish(any(), traceId, EntraStatus.NO_CHANGES) } returns true
 
@@ -249,7 +249,7 @@ class ResourceGroupConsumerServiceTest {
             EntraGroup(
                 objectId = groupId,
                 displayName = "UpdatedGroup",
-                resourceGroupID = 12345,
+                resourceGroupId = 12345,
             )
         every { entraGroupStateService.storeAndPublish(any(), traceId, EntraStatus.UPDATED) } returns true
 
@@ -303,7 +303,7 @@ class ResourceGroupConsumerServiceTest {
             EntraGroup(
                 objectId = groupId,
                 displayName = "UpdatedGroup",
-                resourceGroupID = 12345,
+                resourceGroupId = 12345,
             )
 
         every { configGroup.allowGroupUpdate } returns true
@@ -403,7 +403,7 @@ class ResourceGroupConsumerServiceTest {
             EntraGroup(
                 objectId = groupId,
                 displayName = "UpdatedGroup",
-                resourceGroupID = 12345,
+                resourceGroupId = 12345,
             )
         every { entraGroupCommandService.updateGroup(resourceGroup) } returns
             EntraGroupCommandService.EntraGroupCommandResult(

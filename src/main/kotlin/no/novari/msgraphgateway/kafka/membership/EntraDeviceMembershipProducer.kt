@@ -9,7 +9,7 @@ import no.novari.kafka.topic.configuration.EventTopicConfiguration
 import no.novari.kafka.topic.name.EventTopicNameParameters
 import no.novari.kafka.topic.name.TopicNamePrefixParameters
 import no.novari.msgraphgateway.dto.EntraDeviceMembershipDto
-import no.novari.msgraphgateway.membership.device.DeviceMembershipProcessingProperties
+import no.novari.msgraphgateway.membership.MembershipProcessingProperties
 import org.slf4j.LoggerFactory
 import org.springframework.boot.context.event.ApplicationReadyEvent
 import org.springframework.context.event.EventListener
@@ -17,8 +17,8 @@ import org.springframework.stereotype.Component
 import java.time.Duration
 
 @Component
-class EntraMembershipProducer(
-    private val properties: DeviceMembershipProcessingProperties,
+class EntraDeviceMembershipProducer(
+    private val properties: MembershipProcessingProperties,
     parameterizedTemplateFactory: ParameterizedTemplateFactory,
     private val entityTopicService: EventTopicService,
 ) {
@@ -28,7 +28,7 @@ class EntraMembershipProducer(
     private val nameParams: EventTopicNameParameters =
         EventTopicNameParameters
             .builder()
-            .eventName("entra-device-group-membership")
+            .eventName("graph-device-group-membership")
             .topicNamePrefixParameters(
                 TopicNamePrefixParameters
                     .stepBuilder()
@@ -48,7 +48,7 @@ class EntraMembershipProducer(
                 .cleanupFrequency(EventCleanupFrequency.NORMAL)
                 .build(),
         )
-        log.info("Initialized topic entra-device-group-membership with {} partitions", properties.resultTopicPartitions)
+        log.info("Initialized topic graph-device-group-membership with {} partitions", properties.resultTopicPartitions)
     }
 
     fun publish(
@@ -64,10 +64,10 @@ class EntraMembershipProducer(
                 .build()
 
         template.send(record)
-        log.info("Published entra-device-group-membership for messageKey: {}", messageKey)
+        log.debug("Published graph-device-group-membership for messageKey: {}", messageKey)
     }
 
     companion object {
-        private val log = LoggerFactory.getLogger(EntraMembershipProducer::class.java)
+        private val log = LoggerFactory.getLogger(EntraDeviceMembershipProducer::class.java)
     }
 }

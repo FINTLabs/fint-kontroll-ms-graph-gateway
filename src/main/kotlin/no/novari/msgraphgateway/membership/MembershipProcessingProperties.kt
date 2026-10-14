@@ -1,4 +1,4 @@
-package no.novari.msgraphgateway.membership.device
+package no.novari.msgraphgateway.membership
 
 import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
@@ -6,8 +6,10 @@ import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.validation.annotation.Validated
 
 @Validated
-@ConfigurationProperties(prefix = "ms-graph.membership.device")
-data class DeviceMembershipProcessingProperties(
+@ConfigurationProperties(prefix = "ms-graph.membership")
+data class MembershipProcessingProperties(
+    @field:Min(1)
+    var consumerConcurrency: Int,
     @field:Min(1)
     var consumerMaxPollRecords: Int,
     @field:Min(1)
@@ -18,4 +20,5 @@ data class DeviceMembershipProcessingProperties(
     var graphBatchSize: Int,
     @field:Min(1)
     var resultTopicPartitions: Int,
+    var directoryObjectsBaseUrl: String,
 )

@@ -10,23 +10,23 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 
 @RestController
-@RequestMapping("/api/admin/device")
+@RequestMapping("/api/admin/devices")
 class DeviceController(
     private val msGraphDevice: MsGraphDevice,
     private val deviceService: DeviceService,
 ) {
     @OnlyDevelopers
-    @PostMapping("/devicefullsync")
-    fun triggerDeviceFullSync(): ResponseEntity<Any> {
+    @PostMapping("/full-sync")
+    fun triggerDeviceFullSync(): ResponseEntity<TriggerResponse> {
         deviceService.triggerFullImport(false)
         return ResponseEntity
             .status(HttpStatus.ACCEPTED)
-            .body(TriggerResponse("Devices Full sync triggered"))
+            .body(TriggerResponse("Devices full sync triggered"))
     }
 
     @OnlyDevelopers
-    @PostMapping("/devicedeltasync")
-    fun triggerDeviceDeltaSync(): ResponseEntity<Any> {
+    @PostMapping("/delta-sync")
+    fun triggerDeviceDeltaSync(): ResponseEntity<TriggerResponse> {
         msGraphDevice.pullAllDevicesDelta()
         return ResponseEntity
             .status(HttpStatus.ACCEPTED)

@@ -14,8 +14,20 @@ data class ErrorResponseResourceId(
     val message: String,
 )
 
+data class GroupWithUniqueNameResponse(
+    val id: String?,
+    val displayName: String?,
+    val uniqueName: String?,
+)
+
+data class GroupUniqueNameStatusResponse(
+    val totalGroupCount: Int,
+    val missingUniqueNameCount: Int,
+    val groups: List<GroupWithUniqueNameResponse>,
+)
+
 @RestController
-@RequestMapping("/groups")
+@RequestMapping("/api/admin/groups")
 class GroupController(
     private val msGraphGroup: MsGraphGroup,
 ) {
@@ -79,5 +91,26 @@ class GroupController(
         } else {
             ResponseEntity.ok(group)
         }
+    }
+
+    @OnlyDevelopers
+    @GetMapping("/unique-name-status")
+    fun getGroupUniqueNameStatus(): ResponseEntity<GroupUniqueNameStatusResponse> {
+        val groups =
+            msGraphGroup.fetchGroupsForUniqueNameAudit().map { group ->
+                GroupWithUniqueNameResponse(
+                    id = group.id,
+                    displayName = group.displayName,
+                    uniqueName = group.uniqueName,
+                )
+            }
+
+        return ResponseEntity.ok(
+            GroupUniqueNameStatusResponse(
+                totalGroupCount = groups.size,
+                missingUniqueNameCount = groups.count { it.uniqueName.isNullOrBlank() },
+                groups = groups,
+            ),
+        )
     }
 }

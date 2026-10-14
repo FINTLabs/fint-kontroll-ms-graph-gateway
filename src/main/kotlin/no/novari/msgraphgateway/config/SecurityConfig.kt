@@ -6,6 +6,7 @@ import no.fintlabs.securityconfig.CustomAuthenticationEntryPoint
 import no.fintlabs.util.JwtUserConverter
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.context.annotation.Profile
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
 import org.springframework.security.web.SecurityFilterChain
@@ -18,6 +19,7 @@ class SecurityConfig(
     private val accessDeniedHandler: CustomAccessDeniedHandler,
 ) {
     @Bean
+    @Profile("!dev")
     fun securityFilterChain(http: HttpSecurity): SecurityFilterChain =
         http
             .authorizeHttpRequests { auth ->
@@ -33,4 +35,12 @@ class SecurityConfig(
             }.exceptionHandling { exceptionHandling ->
                 exceptionHandling.accessDeniedHandler(accessDeniedHandler)
             }.build()
+
+    @Bean
+    @Profile("dev")
+    fun localSecurityFilterChain(http: HttpSecurity): SecurityFilterChain =
+        http
+            .csrf { it.disable() }
+            .authorizeHttpRequests { it.anyRequest().permitAll() }
+            .build()
 }

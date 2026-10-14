@@ -11,9 +11,9 @@ import no.novari.kafka.consuming.ParameterizedListenerContainerFactory
 import no.novari.kafka.consuming.ParameterizedListenerContainerFactoryService
 import no.novari.kafka.topic.name.EventTopicNameParameters
 import no.novari.msgraphgateway.kafka.OperationType
-import no.novari.msgraphgateway.membership.device.DeviceMembershipProcessingProperties
+import no.novari.msgraphgateway.membership.MembershipProcessingProperties
 import no.novari.msgraphgateway.membership.device.DeviceResourceGroupMembership
-import no.novari.msgraphgateway.services.member.MembershipService
+import no.novari.msgraphgateway.services.member.DeviceMembershipService
 import org.apache.kafka.clients.consumer.ConsumerRecord
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Test
@@ -24,16 +24,18 @@ import java.util.function.Consumer
 class MembershipConsumerTest {
     private val listenerContainerFactoryService = mockk<ParameterizedListenerContainerFactoryService>()
     private val errorHandlerFactory = mockk<ErrorHandlerFactory>()
-    private val membershipService = mockk<MembershipService>(relaxed = true)
+    private val membershipService = mockk<DeviceMembershipService>(relaxed = true)
     private val errorHandler = mockk<DefaultErrorHandler>()
     private val listenerFactory = mockk<ParameterizedListenerContainerFactory<DeviceResourceGroupMembership>>()
     private val container = mockk<ConcurrentMessageListenerContainer<String, DeviceResourceGroupMembership>>()
     private val properties =
-        DeviceMembershipProcessingProperties(
+        MembershipProcessingProperties(
+            consumerConcurrency = 1,
             consumerMaxPollRecords = 500,
             graphMaxConcurrentCalls = 3,
             graphBatchSize = 20,
             resultTopicPartitions = 1,
+            directoryObjectsBaseUrl = "https://graph.microsoft.com/v1.0/directoryObjects/",
         )
 
     @Test
@@ -63,6 +65,7 @@ class MembershipConsumerTest {
                 capture(batchListener),
                 any<ListenerConfiguration>(),
                 errorHandler,
+                any(),
             )
         } returns listenerFactory
         every { listenerFactory.createContainer(any<EventTopicNameParameters>()) } returns container
@@ -81,8 +84,8 @@ class MembershipConsumerTest {
         }
     }
 
-    private fun membershipConsumer(): MembershipConsumer =
-        MembershipConsumer(
+    private fun membershipConsumer(): DeviceMembershipConsumer =
+        DeviceMembershipConsumer(
             parameterizedListenerContainerFactoryService = listenerContainerFactoryService,
             errorHandlerFactory = errorHandlerFactory,
             membershipService = membershipService,

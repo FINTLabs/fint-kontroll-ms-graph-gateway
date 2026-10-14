@@ -13,7 +13,7 @@ class EntraGroupMapper(
         EntraGroup(
             objectId = resourceGroup.idpGroupObjectId,
             displayName = buildDisplayName(resourceGroup),
-            resourceGroupID = resourceGroup.resourceId.toLongOrNull(),
+            resourceGroupId = resourceGroup.resourceId.toLongOrNull(),
         )
 
     fun buildDisplayName(resourceGroup: ResourceGroup): String {

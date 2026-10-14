@@ -1,7 +1,7 @@
 package no.novari.msgraphgateway.controller
 
 import no.fintlabs.util.OnlyDevelopers
-import no.novari.msgraphgateway.services.member.MembershipService
+import no.novari.msgraphgateway.services.member.DeviceMembershipService
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.RequestMapping
@@ -12,7 +12,7 @@ import java.time.OffsetDateTime
 @RestController
 @RequestMapping("/api/admin/device-memberships")
 class DeviceMembershipController(
-    private val membershipService: MembershipService,
+    private val membershipService: DeviceMembershipService,
 ) {
     @OnlyDevelopers
     @DeleteMapping
