@@ -118,7 +118,33 @@ class UserMembershipRemovalTest {
     }
 
     @Test
-    fun `Entra-only membership remains unknown and run id changes with each snapshot`() {
+    fun `snapshot confirms a desired add`() {
+        commands.saveAll(listOf(state(EntraStatus.FAILED, true, true)))
+        val runId = UUID.randomUUID()
+
+        observations.markUsersSeen(runId, listOf(id))
+        observations.completeSnapshot(runId)
+
+        val confirmed = commands.findAllByIds(listOf(id)).getValue(id)
+        assertEquals(true, confirmed.desiredPresent)
+        assertEquals(true, confirmed.observedPresent)
+        assertEquals(EntraStatus.ADDED, confirmed.status)
+    }
+
+    @Test
+    fun `delta confirms a desired add`() {
+        commands.saveAll(listOf(state(EntraStatus.FAILED, true, false)))
+
+        observations.addObservedUsers(listOf(id))
+
+        val confirmed = commands.findAllByIds(listOf(id)).getValue(id)
+        assertEquals(true, confirmed.desiredPresent)
+        assertEquals(true, confirmed.observedPresent)
+        assertEquals(EntraStatus.ADDED, confirmed.status)
+    }
+
+    @Test
+    fun `Entra-only membership is marked added without a desired state`() {
         val first = UUID.randomUUID()
         val second = UUID.randomUUID()
         observations.markUsersSeen(first, listOf(id))
@@ -127,7 +153,18 @@ class UserMembershipRemovalTest {
         observations.markUsersSeen(second, listOf(id))
         observations.completeSnapshot(second)
         assertEquals(second, jdbc.queryForObject("SELECT observed_run_id FROM user_memberships", UUID::class.java))
-        assertNull(commands.findAllByIds(listOf(id)).getValue(id).desiredPresent)
+        val membership = commands.findAllByIds(listOf(id)).getValue(id)
+        assertNull(membership.desiredPresent)
+        assertEquals(EntraStatus.ADDED, membership.status)
+    }
+
+    @Test
+    fun `delta removes an Entra-only membership`() {
+        observations.addObservedUsers(listOf(id))
+
+        observations.removeObservedUsers(listOf(id))
+
+        assertTrue(commands.findAllByIds(listOf(id)).isEmpty())
     }
 
     private fun state(
