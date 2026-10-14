@@ -168,13 +168,15 @@ class UserMembershipRemovalTest {
     }
 
     @Test
-    fun `find all with null status excludes memberships with a status`() {
-        val membershipWithStatus = UserMembershipId(UUID.randomUUID(), UUID.randomUUID())
-        observations.addObservedUsers(listOf(id, membershipWithStatus))
+    fun `finds observed memberships without desired state`() {
+        val membershipWithDesiredState = UserMembershipId(UUID.randomUUID(), UUID.randomUUID())
+        val stagedMembership = UserMembershipId(UUID.randomUUID(), UUID.randomUUID())
+        observations.addObservedUsers(listOf(id, membershipWithDesiredState))
+        observations.markUsersSeen(UUID.randomUUID(), listOf(stagedMembership))
         commands.saveAll(
             listOf(
                 UserMembershipEntity(
-                    membershipWithStatus,
+                    membershipWithDesiredState,
                     EntraStatus.ADDED,
                     true,
                     true,
@@ -184,10 +186,12 @@ class UserMembershipRemovalTest {
             ),
         )
 
-        val memberships = commands.findAllWithNullStatus()
+        val memberships = commands.findAllObservedWithoutDesiredState()
 
         assertEquals(listOf(id), memberships.map { it.id })
-        assertTrue(memberships.all { it.status == null })
+        assertEquals(EntraStatus.ADDED, memberships.single().status)
+        assertNull(memberships.single().desiredPresent)
+        assertTrue(memberships.single().observedPresent == true)
     }
 
     private fun state(

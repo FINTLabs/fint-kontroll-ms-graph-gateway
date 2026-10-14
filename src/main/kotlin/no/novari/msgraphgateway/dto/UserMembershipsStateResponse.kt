@@ -14,7 +14,7 @@ data class UserMembershipResponse(
     val lastUpdatedAt: OffsetDateTime,
 )
 
-data class NullUserMembershipsResponse(
+data class UserMembershipsStateResponse(
     val count: Int,
     val memberships: List<UserMembershipResponse>,
 )

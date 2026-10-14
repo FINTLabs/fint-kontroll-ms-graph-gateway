@@ -1,8 +1,8 @@
 package no.novari.msgraphgateway.controller
 
 import no.fintlabs.util.OnlyDevelopers
-import no.novari.msgraphgateway.dto.NullUserMembershipsResponse
 import no.novari.msgraphgateway.dto.UserMembershipResponse
+import no.novari.msgraphgateway.dto.UserMembershipsStateResponse
 import no.novari.msgraphgateway.services.member.UserMembershipService
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.DeleteMapping
@@ -18,10 +18,10 @@ class UserMembershipController(
     private val membershipService: UserMembershipService,
 ) {
     @OnlyDevelopers
-    @GetMapping("/without-status")
-    fun getMembershipsWithNullStatus(): ResponseEntity<NullUserMembershipsResponse> {
+    @GetMapping("/without-desired-state")
+    fun getObservedMembershipsWithoutDesiredState(): ResponseEntity<UserMembershipsStateResponse> {
         val memberships =
-            membershipService.findMembershipsWithNullStatus().map {
+            membershipService.findObservedMembershipsWithoutDesiredState().map {
                 UserMembershipResponse(
                     userRef = it.id.userRef,
                     groupRef = it.id.groupRef,
@@ -34,7 +34,7 @@ class UserMembershipController(
             }
 
         return ResponseEntity.ok(
-            NullUserMembershipsResponse(
+            UserMembershipsStateResponse(
                 count = memberships.size,
                 memberships = memberships,
             ),
