@@ -37,6 +37,7 @@ class UserMembershipDatabasePerformanceTest {
                 ClassPathResource("db/migration/V5__add_groups_table.sql"),
                 ClassPathResource("db/migration/V6__user_memberships.sql"),
                 ClassPathResource("db/migration/V7__consolidate_group_membership_state.sql"),
+                ClassPathResource("db/migration/V8__index_user_memberships_without_desired_state.sql"),
             ).execute(dataSource)
 
             val jdbc = JdbcTemplate(dataSource)

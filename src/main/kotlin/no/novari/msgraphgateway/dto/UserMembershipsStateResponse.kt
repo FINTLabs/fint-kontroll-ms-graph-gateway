@@ -16,5 +16,8 @@ data class UserMembershipResponse(
 
 data class UserMembershipsStateResponse(
     val count: Int,
+    val page: Int,
+    val size: Int,
+    val hasNextPage: Boolean,
     val memberships: List<UserMembershipResponse>,
 )
