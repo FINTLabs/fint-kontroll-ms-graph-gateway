@@ -35,11 +35,11 @@ dependencies {
     implementation("no.fintlabs:fint-kontroll-auth:1.3.8")
     runtimeOnly("io.micrometer:micrometer-registry-prometheus")
     implementation("org.springframework.boot:spring-boot-starter-oauth2-resource-server")
-    implementation("org.apache.httpcomponents.core5:httpcore5-h2:5.4.3")
+    implementation("org.apache.httpcomponents.core5:httpcore5-h2:5.4.4")
     implementation("org.apache.commons:commons-lang3:3.20.0")
     implementation("org.apache.commons:commons-compress:1.28.0")
     implementation("org.apache.logging.log4j:log4j-api:2.26.1")
-    implementation("tools.jackson.core:jackson-databind:3.2.2")
+    implementation("tools.jackson.core:jackson-databind:3.2.3")
     implementation("io.opentelemetry:opentelemetry-api:1.65.0")
 
     // Kotlin
@@ -55,11 +55,11 @@ dependencies {
     // Kafka
     implementation("org.springframework.kafka:spring-kafka")
     implementation("no.novari:kafka:6.0.0")
-    implementation("at.yawk.lz4:lz4-java:1.11.2")
+    implementation("at.yawk.lz4:lz4-java:1.11.4")
 
     // Microsoft Graph SDK (Java)
-    implementation("com.microsoft.graph:microsoft-graph:6.65.0")
-    implementation("com.azure:azure-identity:1.18.6")
+    implementation("com.microsoft.graph:microsoft-graph:6.71.0")
+    implementation("com.azure:azure-identity:1.18.7")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test")
