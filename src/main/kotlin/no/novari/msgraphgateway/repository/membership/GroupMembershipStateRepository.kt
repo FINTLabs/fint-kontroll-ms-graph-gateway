@@ -270,12 +270,15 @@ class GroupMembershipStateRepository(
             runId,
         )
         jdbcTemplate.update(
-            "UPDATE device_memberships SET observed_present = TRUE " +
-                "WHERE observed_run_id = ?::uuid AND observed_present IS DISTINCT FROM TRUE",
+            "UPDATE device_memberships SET observed_present = TRUE, status = 'ADDED' " +
+                "WHERE observed_run_id = ?::uuid " +
+                "AND (observed_present IS DISTINCT FROM TRUE " +
+                "OR status IS DISTINCT FROM 'ADDED')",
             runId,
         )
         jdbcTemplate.update(
-            "UPDATE device_memberships SET observed_present = FALSE " +
+            "UPDATE device_memberships SET observed_present = FALSE, " +
+                "status = CASE WHEN desired_present IS NULL THEN NULL ELSE status END " +
                 "WHERE observed_present IS TRUE AND observed_run_id IS DISTINCT FROM ?::uuid",
             runId,
         )
@@ -348,9 +351,13 @@ class GroupMembershipStateRepository(
                 INSERT INTO device_memberships
                     (device_ref, group_ref, status, desired_present, observed_present, observed_run_id,
                      last_observed_at, created_at, last_updated_at)
-                VALUES (?::uuid, ?::uuid, NULL, NULL, TRUE, NULL, now(), now(), now())
+                VALUES (?::uuid, ?::uuid, 'ADDED', NULL, TRUE, NULL, now(), now(), now())
                 ON CONFLICT (device_ref, group_ref)
-                DO UPDATE SET observed_present = TRUE, observed_run_id = NULL, last_observed_at = now()
+                DO UPDATE SET
+                    observed_present = TRUE,
+                    observed_run_id = NULL,
+                    last_observed_at = now(),
+                    status = 'ADDED'
                 """.trimIndent(),
                 memberships,
                 minOf(DB_BATCH_SIZE, memberships.size),
@@ -362,7 +369,10 @@ class GroupMembershipStateRepository(
             jdbcTemplate.batchUpdate(
                 """
                 UPDATE device_memberships
-                SET observed_present = FALSE, observed_run_id = NULL, last_observed_at = now()
+                SET observed_present = FALSE,
+                    observed_run_id = NULL,
+                    last_observed_at = now(),
+                    status = CASE WHEN desired_present IS NULL THEN NULL ELSE status END
                 WHERE device_ref = ?::uuid AND group_ref = ?::uuid
                 """.trimIndent(),
                 memberships,
