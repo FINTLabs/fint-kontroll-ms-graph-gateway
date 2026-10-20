@@ -4,8 +4,8 @@ plugins {
     id("org.jlleitschuh.gradle.ktlint") version "14.2.0"
 
     kotlin("jvm") version "2.4.21"
-    kotlin("plugin.spring") version "2.4.20"
-    kotlin("plugin.jpa") version "2.4.20"
+    kotlin("plugin.spring") version "2.4.21"
+    kotlin("plugin.jpa") version "2.4.21"
 }
 
 group = "no.novari"
@@ -40,7 +40,7 @@ dependencies {
     implementation("org.apache.commons:commons-compress:1.28.0")
     implementation("org.apache.logging.log4j:log4j-api:2.26.1")
     implementation("tools.jackson.core:jackson-databind:3.2.3")
-    implementation("io.opentelemetry:opentelemetry-api:1.65.0")
+    implementation("io.opentelemetry:opentelemetry-api:1.67.0")
 
     // Kotlin
     implementation("org.jetbrains.kotlin:kotlin-reflect")
@@ -65,9 +65,9 @@ dependencies {
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test")
     testImplementation("io.mockk:mockk:1.13.10")
     testImplementation("org.jetbrains.kotlin:kotlin-reflect")
-    testImplementation("org.testcontainers:junit-jupiter:1.19.8")
-    testImplementation("org.testcontainers:kafka:1.19.8")
-    testImplementation("org.testcontainers:postgresql:1.19.8")
+    testImplementation("org.testcontainers:junit-jupiter:1.21.4")
+    testImplementation("org.testcontainers:kafka:1.21.4")
+    testImplementation("org.testcontainers:postgresql:1.21.4")
     testImplementation("org.wiremock:wiremock:3.13.2")
 }
 
