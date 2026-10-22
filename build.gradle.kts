@@ -30,7 +30,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.apache.tomcat.embed:tomcat-embed-core:10.1.59")
-    implementation("io.netty:netty-handler:4.2.18.Final")
+    implementation("io.netty:netty-handler:4.2.19.Final")
     implementation("org.springframework:spring-context-support")
     implementation("no.fintlabs:fint-kontroll-auth:1.3.8")
     runtimeOnly("io.micrometer:micrometer-registry-prometheus")
