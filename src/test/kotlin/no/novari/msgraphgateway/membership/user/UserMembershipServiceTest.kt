@@ -50,7 +50,7 @@ class UserMembershipServiceTest {
             UserResourceGroupMembership(
                 operation = OperationType.ADD,
                 entraGroupRef = "not-a-uuid",
-                userGroupRef = UUID.randomUUID().toString(),
+                entraUserRef = UUID.randomUUID().toString(),
             )
 
         service.processKontrollMembershipBatch(listOf(record(messageKey, membership)))
@@ -63,7 +63,7 @@ class UserMembershipServiceTest {
                 EntraUserMembershipDto(
                     code = EntraStatus.ERROR,
                     entraGroupRef = membership.entraGroupRef,
-                    entraUserRef = membership.userGroupRef,
+                    entraUserRef = membership.entraUserRef,
                 ),
             )
         }
@@ -77,7 +77,7 @@ class UserMembershipServiceTest {
             UserResourceGroupMembership(
                 operation = OperationType.ADD,
                 entraGroupRef = groupRef.toString(),
-                userGroupRef = userRef.toString(),
+                entraUserRef = userRef.toString(),
             )
         val existing =
             UserMembershipEntity(
@@ -127,7 +127,7 @@ class UserMembershipServiceTest {
             UserResourceGroupMembership(
                 operation = testCase.operation,
                 entraGroupRef = groupRef.toString(),
-                userGroupRef = userRef.toString(),
+                entraUserRef = userRef.toString(),
             )
         val savedSlot = slot<Collection<UserMembershipEntity>>()
 

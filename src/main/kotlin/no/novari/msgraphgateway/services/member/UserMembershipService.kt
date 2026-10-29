@@ -49,7 +49,7 @@ class UserMembershipService(
 
     override fun groupIdOf(membership: UserResourceGroupMembership): String = membership.entraGroupRef
 
-    override fun memberIdOf(membership: UserResourceGroupMembership): String = membership.userGroupRef
+    override fun memberIdOf(membership: UserResourceGroupMembership): String = membership.entraUserRef
 
     override fun membershipIdOf(
         memberId: UUID,
@@ -98,7 +98,7 @@ class UserMembershipService(
             EntraUserMembershipDto(
                 status,
                 membership.entraGroupRef,
-                membership.userGroupRef,
+                membership.entraUserRef,
             ),
         )
     }
