@@ -30,16 +30,16 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.apache.tomcat.embed:tomcat-embed-core:10.1.59")
-    implementation("io.netty:netty-handler:4.2.18.Final")
+    implementation("io.netty:netty-handler:4.2.19.Final")
     implementation("org.springframework:spring-context-support")
     implementation("no.fintlabs:fint-kontroll-auth:1.3.8")
     runtimeOnly("io.micrometer:micrometer-registry-prometheus")
     implementation("org.springframework.boot:spring-boot-starter-oauth2-resource-server")
     implementation("org.apache.httpcomponents.core5:httpcore5-h2:5.4.4")
-    implementation("org.apache.commons:commons-lang3:3.20.0")
+    implementation("org.apache.commons:commons-lang3:3.21.0")
     implementation("org.apache.commons:commons-compress:1.28.0")
     implementation("org.apache.logging.log4j:log4j-api:2.26.1")
-    implementation("tools.jackson.core:jackson-databind:3.2.3")
+    implementation("tools.jackson.core:jackson-databind:3.2.4")
     implementation("io.opentelemetry:opentelemetry-api:1.67.0")
 
     // Kotlin
@@ -55,7 +55,7 @@ dependencies {
     // Kafka
     implementation("org.springframework.kafka:spring-kafka")
     implementation("no.novari:kafka:6.0.0")
-    implementation("at.yawk.lz4:lz4-java:1.11.4")
+    implementation("at.yawk.lz4:lz4-java:1.12.0")
 
     // Microsoft Graph SDK (Java)
     implementation("com.microsoft.graph:microsoft-graph:6.71.0")
