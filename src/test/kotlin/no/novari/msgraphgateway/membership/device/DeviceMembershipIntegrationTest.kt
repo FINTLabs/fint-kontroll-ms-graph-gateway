@@ -141,25 +141,25 @@ class DeviceMembershipIntegrationTest {
     }
 
     @Test
-    fun membershipConsumerHandlesExistingAddedAddLoadAsNoChanges() {
+    fun membershipConsumerHandlesExistingAddedAddLoadAsAlreadyPresent() {
         val memberships = createMemberships(CORRECTNESS_TEST_MESSAGE_COUNT, OperationType.ADD)
         saveExistingMemberships(memberships, EntraStatus.ADDED)
 
         checkEntraStatuses(
             memberships = memberships,
-            expectedStatuses = mapOf(EntraStatus.NO_CHANGES to CORRECTNESS_TEST_MESSAGE_COUNT),
+            expectedStatuses = mapOf(EntraStatus.ALREADY_PRESENT to CORRECTNESS_TEST_MESSAGE_COUNT),
             expectGraphCalls = false,
         )
     }
 
     @Test
-    fun membershipConsumerHandlesExistingRemovedRemoveLoadAsNoChanges() {
+    fun membershipConsumerHandlesExistingRemovedRemoveLoadAsAlreadyRemoved() {
         val memberships = createMemberships(CORRECTNESS_TEST_MESSAGE_COUNT, OperationType.REMOVE)
         saveExistingMemberships(memberships, EntraStatus.REMOVED)
 
         checkEntraStatuses(
             memberships = memberships,
-            expectedStatuses = mapOf(EntraStatus.NO_CHANGES to CORRECTNESS_TEST_MESSAGE_COUNT),
+            expectedStatuses = mapOf(EntraStatus.ALREADY_REMOVED to CORRECTNESS_TEST_MESSAGE_COUNT),
             expectGraphCalls = false,
         )
     }
@@ -386,7 +386,8 @@ class DeviceMembershipIntegrationTest {
                 EntraStatus.ADDED to 0,
                 EntraStatus.REMOVED to 0,
                 EntraStatus.ERROR to 0,
-                EntraStatus.NO_CHANGES to 0,
+                EntraStatus.ALREADY_PRESENT to 0,
+                EntraStatus.ALREADY_REMOVED to 0,
                 EntraStatus.FAILED to 0,
             )
 
@@ -402,7 +403,7 @@ class DeviceMembershipIntegrationTest {
             when (index) {
                 0 -> {
                     existingMemberships += membership to EntraStatus.ADDED
-                    expectedStatuses.increment(EntraStatus.NO_CHANGES)
+                    expectedStatuses.increment(EntraStatus.ALREADY_PRESENT)
                 }
 
                 1 -> {
@@ -426,7 +427,7 @@ class DeviceMembershipIntegrationTest {
 
                 5 -> {
                     existingMemberships += membership to EntraStatus.REMOVED
-                    expectedStatuses.increment(EntraStatus.NO_CHANGES)
+                    expectedStatuses.increment(EntraStatus.ALREADY_REMOVED)
                 }
 
                 6 -> {

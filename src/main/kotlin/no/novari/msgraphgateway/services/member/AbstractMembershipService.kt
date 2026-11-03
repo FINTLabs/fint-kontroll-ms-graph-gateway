@@ -62,19 +62,20 @@ abstract class AbstractMembershipService<M : Any, ID : Any, E : Any>(
             val operation = operationOf(validatedMembership.membership)
 
             if (MembershipStatusResolver.shouldSkipOperation(existing?.let(::statusOf), operation)) {
-                val persistedStatus = MembershipStatusResolver.persistedStatus(operation, EntraStatus.NO_CHANGES)
+                val responseStatus = MembershipStatusResolver.responseStatusForDuplicateOperation(operation)
+                val storedStatus = MembershipStatusResolver.statusToStore(responseStatus)
                 statesToSave +=
                     buildMembershipState(
                         validatedMembership.membershipId,
                         existing,
                         operation,
-                        persistedStatus,
+                        storedStatus,
                     )
                 resultsToPublish +=
                     MembershipResult(
                         messageKey = validatedMembership.messageKey,
                         membership = validatedMembership.membership,
-                        status = EntraStatus.NO_CHANGES,
+                        status = responseStatus,
                     )
 
                 log.debug(
@@ -97,14 +98,14 @@ abstract class AbstractMembershipService<M : Any, ID : Any, E : Any>(
 
         processPendingMemberships(pendingMemberships).forEach { result ->
             val operation = operationOf(result.pending.membership)
-            val persistedStatus = MembershipStatusResolver.persistedStatus(operation, result.status)
+            val storedStatus = MembershipStatusResolver.statusToStore(result.status)
 
             statesToSave +=
                 buildMembershipState(
                     result.pending.membershipId,
                     result.pending.existing,
                     operation,
-                    persistedStatus,
+                    storedStatus,
                 )
             resultsToPublish +=
                 MembershipResult(
@@ -347,7 +348,7 @@ abstract class AbstractMembershipService<M : Any, ID : Any, E : Any>(
                 memberIdOf(membership),
                 groupIdOf(membership),
             )
-            return EntraStatus.NO_CHANGES
+            return EntraStatus.ALREADY_PRESENT
         }
 
         if (statusCode == 400) {

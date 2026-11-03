@@ -13,17 +13,16 @@ object MembershipStatusResolver {
             OperationType.REMOVE -> existingStatus == EntraStatus.REMOVED
         }
 
-    fun persistedStatus(
-        operation: OperationType,
-        status: EntraStatus,
-    ): EntraStatus {
-        if (status != EntraStatus.NO_CHANGES) {
-            return status
+    fun responseStatusForDuplicateOperation(operation: OperationType): EntraStatus =
+        when (operation) {
+            OperationType.ADD -> EntraStatus.ALREADY_PRESENT
+            OperationType.REMOVE -> EntraStatus.ALREADY_REMOVED
         }
 
-        return when (operation) {
-            OperationType.ADD -> EntraStatus.ADDED
-            OperationType.REMOVE -> EntraStatus.REMOVED
+    fun statusToStore(responseStatus: EntraStatus): EntraStatus =
+        when (responseStatus) {
+            EntraStatus.ALREADY_PRESENT -> EntraStatus.ADDED
+            EntraStatus.ALREADY_REMOVED -> EntraStatus.REMOVED
+            else -> responseStatus
         }
-    }
 }
