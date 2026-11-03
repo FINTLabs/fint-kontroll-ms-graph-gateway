@@ -39,7 +39,7 @@ dependencies {
     implementation("org.apache.commons:commons-lang3:3.20.0")
     implementation("org.apache.commons:commons-compress:1.28.0")
     implementation("org.apache.logging.log4j:log4j-api:2.26.1")
-    implementation("tools.jackson.core:jackson-databind:3.2.3")
+    implementation("tools.jackson.core:jackson-databind:3.2.4")
     implementation("io.opentelemetry:opentelemetry-api:1.67.0")
 
     // Kotlin
