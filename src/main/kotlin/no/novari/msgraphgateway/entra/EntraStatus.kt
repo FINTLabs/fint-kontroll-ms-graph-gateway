@@ -6,6 +6,8 @@ enum class EntraStatus {
     DELETED,
     ADDED,
     REMOVED,
+    ALREADY_PRESENT,
+    ALREADY_REMOVED,
     ERROR,
     NO_CHANGES,
     FAILED,

@@ -71,7 +71,7 @@ class DeviceMembershipServiceTest {
     }
 
     @Test
-    fun processKontrollMembershipBatchSkipsDuplicateAddAndPublishesNoChanges() {
+    fun processKontrollMembershipBatchSkipsDuplicateAddAndPublishesAlreadyPresent() {
         val deviceRef = UUID.randomUUID()
         val groupRef = UUID.randomUUID()
         val membership =
@@ -110,7 +110,50 @@ class DeviceMembershipServiceTest {
             entraDeviceMembershipProducer.publish(
                 "duplicate-add",
                 EntraDeviceMembershipDto(
-                    code = EntraStatus.NO_CHANGES,
+                    code = EntraStatus.ALREADY_PRESENT,
+                    entraGroupRef = groupRef.toString(),
+                    entraDeviceRef = deviceRef.toString(),
+                ),
+            )
+        }
+        verify(exactly = 0) { graphServiceClient.batchRequestBuilder }
+    }
+
+    @Test
+    fun processKontrollMembershipBatchSkipsDuplicateRemoveAndPublishesAlreadyRemoved() {
+        val deviceRef = UUID.randomUUID()
+        val groupRef = UUID.randomUUID()
+        val membership =
+            DeviceResourceGroupMembership(
+                operation = OperationType.REMOVE,
+                entraGroupRef = groupRef.toString(),
+                entraDeviceRef = deviceRef.toString(),
+            )
+        val membershipId = DeviceMembershipId(deviceRef, groupRef)
+        val existing =
+            DeviceMembershipEntity(
+                id = membershipId,
+                status = EntraStatus.REMOVED,
+                desiredPresent = false,
+                observedPresent = false,
+                createdAt = OffsetDateTime.parse("2026-04-29T10:00:00Z"),
+                lastUpdatedAt = OffsetDateTime.parse("2026-04-29T10:00:00Z"),
+            )
+        val savedSlot = slot<Collection<DeviceMembershipEntity>>()
+
+        every {
+            deviceMembershipEntityRepository.findAllByIds(listOf(membershipId))
+        } returns mapOf(membershipId to existing)
+        every { deviceMembershipEntityRepository.saveAll(capture(savedSlot)) } returns Unit
+
+        service.processKontrollMembershipBatch(listOf(record("duplicate-remove", membership)))
+
+        assertEquals(EntraStatus.REMOVED, savedSlot.captured.single().status)
+        verify(exactly = 1) {
+            entraDeviceMembershipProducer.publish(
+                "duplicate-remove",
+                EntraDeviceMembershipDto(
+                    code = EntraStatus.ALREADY_REMOVED,
                     entraGroupRef = groupRef.toString(),
                     entraDeviceRef = deviceRef.toString(),
                 ),
@@ -330,7 +373,7 @@ class DeviceMembershipServiceTest {
                     operation = OperationType.ADD,
                     statusCode = 400,
                     error = "One or more added object references already exist",
-                    expectedPublishedStatus = EntraStatus.NO_CHANGES,
+                    expectedPublishedStatus = EntraStatus.ALREADY_PRESENT,
                     expectedPersistedStatus = EntraStatus.ADDED,
                 ),
                 GraphStatusTestCase(

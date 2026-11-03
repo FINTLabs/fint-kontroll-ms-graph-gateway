@@ -70,7 +70,7 @@ class UserMembershipServiceTest {
     }
 
     @Test
-    fun processKontrollMembershipBatchSkipsDuplicateAddAndPublishesNoChanges() {
+    fun processKontrollMembershipBatchSkipsDuplicateAddAndPublishesAlreadyPresent() {
         val userRef = UUID.randomUUID()
         val groupRef = UUID.randomUUID()
         val membership =
@@ -109,7 +109,7 @@ class UserMembershipServiceTest {
             entraUserMembershipProducer.publish(
                 "duplicate-add",
                 EntraUserMembershipDto(
-                    code = EntraStatus.NO_CHANGES,
+                    code = EntraStatus.ALREADY_PRESENT,
                     entraGroupRef = groupRef.toString(),
                     entraUserRef = userRef.toString(),
                 ),
@@ -294,7 +294,7 @@ class UserMembershipServiceTest {
                     operation = OperationType.ADD,
                     statusCode = 400,
                     error = "One or more added object references already exist",
-                    expectedPublishedStatus = EntraStatus.NO_CHANGES,
+                    expectedPublishedStatus = EntraStatus.ALREADY_PRESENT,
                     expectedPersistedStatus = EntraStatus.ADDED,
                 ),
                 GraphStatusTestCase(
