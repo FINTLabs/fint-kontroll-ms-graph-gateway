@@ -41,7 +41,7 @@ class UserMembershipConsumer(
                     .build(),
             ).build()
 
-    @Bean
+//    @Bean
     fun kontrollUserMembershipConsumer(): ConcurrentMessageListenerContainer<String, UserResourceGroupMembership> =
         parameterizedListenerContainerFactoryService
             .createBatchListenerContainerFactory(
