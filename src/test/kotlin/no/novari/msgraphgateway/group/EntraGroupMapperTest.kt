@@ -36,6 +36,20 @@ class EntraGroupMapperTest {
     }
 
     @Test
+    fun `buildDisplayName uses lowercase and replaces whitespace with hyphens`() {
+        val mapper =
+            mapper(
+                filterMode = ConfigGroup.FilterMode.NONE,
+                prefix = null,
+                suffix = null,
+            )
+
+        val displayName = mapper.buildDisplayName(resourceGroup().copy(resourceName = "Test Group Name"))
+
+        assertEquals("test-group-name", displayName)
+    }
+
+    @Test
     fun `expectedFromResourceGroup uses configured display name`() {
         val mapper =
             mapper(

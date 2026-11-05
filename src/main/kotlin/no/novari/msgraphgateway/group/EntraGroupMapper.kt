@@ -22,6 +22,8 @@ class EntraGroupMapper(
         val resourceName = resourceGroup.resourceName.orEmpty()
 
         return "$prefix$resourceName$suffix"
+            .lowercase()
+            .replace(Regex("\\s+"), "-")
     }
 
     fun buildMailNickname(resourceGroup: ResourceGroup): String =
