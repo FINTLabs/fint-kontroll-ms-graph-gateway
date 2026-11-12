@@ -18,7 +18,21 @@ class EntraGroupMapperTest {
 
         val displayName = mapper.buildDisplayName(resourceGroup())
 
-        assertEquals("-pre-test223344-suff-", displayName)
+        assertEquals("-pre-app-test.2233-44-suff-", displayName)
+    }
+
+    @Test
+    fun `buildDisplayName uses first three characters of resource type`() {
+        val mapper =
+            mapper(
+                filterMode = ConfigGroup.FilterMode.NONE,
+                prefix = null,
+                suffix = null,
+            )
+
+        val displayName = mapper.buildDisplayName(resourceGroup().copy(resourceType = "Device"))
+
+        assertEquals("dev-test.2233-44", displayName)
     }
 
     @Test
@@ -32,7 +46,49 @@ class EntraGroupMapperTest {
 
         val displayName = mapper.buildDisplayName(resourceGroup())
 
-        assertEquals("test223344", displayName)
+        assertEquals("app-test.2233-44", displayName)
+    }
+
+    @Test
+    fun `buildDisplayName uses lowercase and removes unsupported characters`() {
+        val mapper =
+            mapper(
+                filterMode = ConfigGroup.FilterMode.NONE,
+                prefix = null,
+                suffix = null,
+            )
+
+        val displayName = mapper.buildDisplayName(resourceGroup().copy(resourceName = "Test Group.Name_ÆØÅ 123-Ok!"))
+
+        assertEquals("app-test.group.name.aoa.123-ok", displayName)
+    }
+
+    @Test
+    fun `buildDisplayName transliterates Norwegian characters`() {
+        val mapper =
+            mapper(
+                filterMode = ConfigGroup.FilterMode.NONE,
+                prefix = null,
+                suffix = null,
+            )
+
+        val displayName = mapper.buildDisplayName(resourceGroup().copy(resourceName = "Blåbærsyltetøy"))
+
+        assertEquals("app-blabarsyltetoy", displayName)
+    }
+
+    @Test
+    fun `buildDisplayName replaces underscores in resource name with dots`() {
+        val mapper =
+            mapper(
+                filterMode = ConfigGroup.FilterMode.NONE,
+                prefix = null,
+                suffix = null,
+            )
+
+        val displayName = mapper.buildDisplayName(resourceGroup().copy(resourceName = "Test_Group_Name"))
+
+        assertEquals("app-test.group.name", displayName)
     }
 
     @Test
@@ -47,7 +103,7 @@ class EntraGroupMapperTest {
         val group = mapper.expectedFromResourceGroup(resourceGroup())
 
         assertEquals("b4d78b5c-9d57-41f1-8b09-31224442c1ac", group.objectId)
-        assertEquals("-pre-test223344-suff-", group.displayName)
+        assertEquals("-pre-app-test.2233-44-suff-", group.displayName)
         assertEquals(223344L, group.resourceGroupId)
     }
 
@@ -71,6 +127,7 @@ class EntraGroupMapperTest {
             operation = ResourceGroupOperation.UPDATE,
             resourceId = "223344",
             idpGroupObjectId = "b4d78b5c-9d57-41f1-8b09-31224442c1ac",
-            resourceName = "test223344",
+            resourceName = "test 2233 - 44",
+            resourceType = "Application",
         )
 }
