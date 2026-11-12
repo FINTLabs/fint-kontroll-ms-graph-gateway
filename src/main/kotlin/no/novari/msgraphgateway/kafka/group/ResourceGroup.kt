@@ -5,4 +5,5 @@ data class ResourceGroup(
     val resourceId: String,
     val idpGroupObjectId: String? = null,
     val resourceName: String? = null,
+    val resourceType: String? = null,
 )

@@ -19,11 +19,14 @@ class EntraGroupMapper(
     fun buildDisplayName(resourceGroup: ResourceGroup): String {
         val prefix = configGroup.prefix?.trim().orEmpty()
         val suffix = configGroup.suffix?.trim().orEmpty()
+        val resourceType = resourceGroup.resourceType?.substring(0, 3) + '-'
         val resourceName = resourceGroup.resourceName.orEmpty()
 
-        return "$prefix$resourceName$suffix"
+        return "$prefix$resourceType$resourceName$suffix"
             .lowercase()
-            .replace(Regex("\\s+"), "-")
+            .replace(Regex("\\s*-\\s*"), "-")
+            .replace(Regex("\\s+"), ".")
+            .replace(Regex("[^a-z0-9.-]"), "")
     }
 
     fun buildMailNickname(resourceGroup: ResourceGroup): String =

@@ -18,7 +18,21 @@ class EntraGroupMapperTest {
 
         val displayName = mapper.buildDisplayName(resourceGroup())
 
-        assertEquals("-pre-test223344-suff-", displayName)
+        assertEquals("-pre-app-test.2233-44-suff-", displayName)
+    }
+
+    @Test
+    fun `buildDisplayName uses first three characters of resource type`() {
+        val mapper =
+            mapper(
+                filterMode = ConfigGroup.FilterMode.NONE,
+                prefix = null,
+                suffix = null,
+            )
+
+        val displayName = mapper.buildDisplayName(resourceGroup().copy(resourceType = "Device"))
+
+        assertEquals("dev-test.2233-44", displayName)
     }
 
     @Test
@@ -32,11 +46,11 @@ class EntraGroupMapperTest {
 
         val displayName = mapper.buildDisplayName(resourceGroup())
 
-        assertEquals("test223344", displayName)
+        assertEquals("app-test.2233-44", displayName)
     }
 
     @Test
-    fun `buildDisplayName uses lowercase and replaces whitespace with hyphens`() {
+    fun `buildDisplayName uses lowercase and removes unsupported characters`() {
         val mapper =
             mapper(
                 filterMode = ConfigGroup.FilterMode.NONE,
@@ -44,9 +58,9 @@ class EntraGroupMapperTest {
                 suffix = null,
             )
 
-        val displayName = mapper.buildDisplayName(resourceGroup().copy(resourceName = "Test Group Name"))
+        val displayName = mapper.buildDisplayName(resourceGroup().copy(resourceName = "Test Group.Name_ÆØÅ 123-Ok!"))
 
-        assertEquals("test-group-name", displayName)
+        assertEquals("app-test.group.name.123-ok", displayName)
     }
 
     @Test
@@ -61,7 +75,7 @@ class EntraGroupMapperTest {
         val group = mapper.expectedFromResourceGroup(resourceGroup())
 
         assertEquals("b4d78b5c-9d57-41f1-8b09-31224442c1ac", group.objectId)
-        assertEquals("-pre-test223344-suff-", group.displayName)
+        assertEquals("-pre-app-test.2233-44-suff-", group.displayName)
         assertEquals(223344L, group.resourceGroupId)
     }
 
@@ -85,6 +99,7 @@ class EntraGroupMapperTest {
             operation = ResourceGroupOperation.UPDATE,
             resourceId = "223344",
             idpGroupObjectId = "b4d78b5c-9d57-41f1-8b09-31224442c1ac",
-            resourceName = "test223344",
+            resourceName = "test 2233 - 44",
+            resourceType = "Application",
         )
 }
