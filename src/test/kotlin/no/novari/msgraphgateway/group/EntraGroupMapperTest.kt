@@ -60,7 +60,35 @@ class EntraGroupMapperTest {
 
         val displayName = mapper.buildDisplayName(resourceGroup().copy(resourceName = "Test Group.Name_ÆØÅ 123-Ok!"))
 
-        assertEquals("app-test.group.name.123-ok", displayName)
+        assertEquals("app-test.group.name.aoa.123-ok", displayName)
+    }
+
+    @Test
+    fun `buildDisplayName transliterates Norwegian characters`() {
+        val mapper =
+            mapper(
+                filterMode = ConfigGroup.FilterMode.NONE,
+                prefix = null,
+                suffix = null,
+            )
+
+        val displayName = mapper.buildDisplayName(resourceGroup().copy(resourceName = "Blåbærsyltetøy"))
+
+        assertEquals("app-blabarsyltetoy", displayName)
+    }
+
+    @Test
+    fun `buildDisplayName replaces underscores in resource name with dots`() {
+        val mapper =
+            mapper(
+                filterMode = ConfigGroup.FilterMode.NONE,
+                prefix = null,
+                suffix = null,
+            )
+
+        val displayName = mapper.buildDisplayName(resourceGroup().copy(resourceName = "Test_Group_Name"))
+
+        assertEquals("app-test.group.name", displayName)
     }
 
     @Test

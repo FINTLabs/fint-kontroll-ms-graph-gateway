@@ -20,10 +20,13 @@ class EntraGroupMapper(
         val prefix = configGroup.prefix?.trim().orEmpty()
         val suffix = configGroup.suffix?.trim().orEmpty()
         val resourceType = resourceGroup.resourceType?.substring(0, 3) + '-'
-        val resourceName = resourceGroup.resourceName.orEmpty()
+        val resourceName = resourceGroup.resourceName.orEmpty().replace('_', '.')
 
         return "$prefix$resourceType$resourceName$suffix"
             .lowercase()
+            .replace('æ', 'a')
+            .replace('ø', 'o')
+            .replace('å', 'a')
             .replace(Regex("\\s*-\\s*"), "-")
             .replace(Regex("\\s+"), ".")
             .replace(Regex("[^a-z0-9.-]"), "")
