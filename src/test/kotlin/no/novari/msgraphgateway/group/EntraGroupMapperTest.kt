@@ -92,6 +92,20 @@ class EntraGroupMapperTest {
     }
 
     @Test
+    fun `buildDisplayName collapses repeated and mixed separators`() {
+        val mapper =
+            mapper(
+                filterMode = ConfigGroup.FilterMode.NONE,
+                prefix = "pre-",
+                suffix = "-suff",
+            )
+
+        val displayName = mapper.buildDisplayName(resourceGroup().copy(resourceName = "Test__Group.-.-Name---Here"))
+
+        assertEquals("pre-app-test.group.name-here-suff", displayName)
+    }
+
+    @Test
     fun `expectedFromResourceGroup uses configured display name`() {
         val mapper =
             mapper(

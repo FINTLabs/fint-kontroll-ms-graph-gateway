@@ -30,6 +30,9 @@ class EntraGroupMapper(
             .replace(Regex("\\s*-\\s*"), "-")
             .replace(Regex("\\s+"), ".")
             .replace(Regex("[^a-z0-9.-]"), "")
+            .replace(Regex("[.-]{2,}")) {
+                if ('.' in it.value) "." else "-"
+            }
     }
 
     fun buildMailNickname(resourceGroup: ResourceGroup): String =
