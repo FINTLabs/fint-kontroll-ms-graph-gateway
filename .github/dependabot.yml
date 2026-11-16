@@ -8,10 +8,14 @@ updates:
       labels:
           - dependencies
           - backend
-      ignore:
-          - dependency-name: "org.springframework*"
-            update-types:
-                - "version-update:semver-major"
+      groups:
+          non-major:
+              patterns:
+                  - "*"
+              update-types:
+                  - minor
+                  - patch
+
 
     - package-ecosystem: github-actions
       directory: "/"
@@ -20,3 +24,10 @@ updates:
       labels:
           - dependencies
           - github-actions
+      groups:
+          non-major:
+              patterns:
+                  - "*"
+              update-types:
+                  - minor
+                  - patch
