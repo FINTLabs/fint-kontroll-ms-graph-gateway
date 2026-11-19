@@ -19,7 +19,11 @@ class EntraGroupMapper(
     fun buildDisplayName(resourceGroup: ResourceGroup): String {
         val prefix = configGroup.prefix?.trim().orEmpty()
         val suffix = configGroup.suffix?.trim().orEmpty()
-        val resourceType = resourceGroup.resourceType?.substring(0, 3)?.plus('-').orEmpty()
+        val resourceType =
+            resourceGroup.resourceType
+                ?.substring(0, 3)
+                ?.plus('-')
+                .orEmpty()
         val resourceName = resourceGroup.resourceName.orEmpty().replace('_', '.')
 
         return "$prefix$resourceType$resourceName$suffix"
