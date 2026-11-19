@@ -36,6 +36,20 @@ class EntraGroupMapperTest {
     }
 
     @Test
+    fun `buildDisplayName omits missing resource type`() {
+        val mapper =
+            mapper(
+                filterMode = ConfigGroup.FilterMode.NONE,
+                prefix = "pre-",
+                suffix = "-suff",
+            )
+
+        val displayName = mapper.buildDisplayName(resourceGroup().copy(resourceType = null))
+
+        assertEquals("pre-test.2233-44-suff", displayName)
+    }
+
+    @Test
     fun `buildDisplayName omits missing prefix and suffix`() {
         val mapper =
             mapper(
