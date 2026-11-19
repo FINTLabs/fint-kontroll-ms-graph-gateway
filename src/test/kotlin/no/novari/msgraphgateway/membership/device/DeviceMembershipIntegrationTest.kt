@@ -45,10 +45,10 @@ import org.springframework.kafka.listener.ConcurrentMessageListenerContainer
 import org.springframework.kafka.support.serializer.JsonSerializer
 import org.springframework.test.context.DynamicPropertyRegistry
 import org.springframework.test.context.DynamicPropertySource
-import org.testcontainers.containers.KafkaContainer
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
 import org.testcontainers.junit.jupiter.Testcontainers
+import org.testcontainers.kafka.ConfluentKafkaContainer
 import org.testcontainers.utility.DockerImageName
 import java.io.ByteArrayInputStream
 import java.time.Duration
@@ -621,8 +621,8 @@ class DeviceMembershipIntegrationTest {
 
         @Container
         @JvmStatic
-        val kafka: KafkaContainer =
-            KafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:7.6.1"))
+        val kafka: ConfluentKafkaContainer =
+            ConfluentKafkaContainer(DockerImageName.parse("confluentinc/cp-kafka:7.6.1"))
 
         @Container
         @JvmStatic
